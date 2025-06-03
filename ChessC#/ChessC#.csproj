@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<!-- Target .NET 8.0; change to net6.0 or net7.0 if needed -->
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<AssemblyName>ChessC#</AssemblyName>
+		<RootNamespace>ChessC_</RootNamespace>
+		<OutputType>Exe</OutputType>
+	</PropertyGroup>
+
+	<!-- Optional: include App.config if still needed -->
+	<ItemGroup>
+		<None Include="App.config" />
+	</ItemGroup>
+</Project>
