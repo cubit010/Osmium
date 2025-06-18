@@ -97,7 +97,7 @@ namespace ChessC_
         public override string ToString()
         {
             string move = $"{From}{To}";
-            if (Flags.HasFlag(MoveFlags.Promotion))
+            if ((Flags & MoveFlags.Promotion) != 0)
                 move += PromotionToChar(PromotionPiece);
             return move;
         }
@@ -106,10 +106,10 @@ namespace ChessC_
         {
             this.Flags |= flag;
         }
-        public bool HasFlag(MoveFlags flag)
-        {
-            return (Flags & flag) != 0;
-        }
+        //public bool HasFlag(MoveFlags flag)
+        //{
+        //    return (Flags & flag) != 0;
+        //}
         private static char PromotionToChar(Piece piece)
         {
             return piece switch

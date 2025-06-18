@@ -73,18 +73,18 @@ namespace ChessC_
 			-5,  0,  0,  0,  0,  0,  0, -5,
 			-5,  0,  0,  0,  0,  0,  0, -5,
 			 5,  10, 10, 10, 10, 10, 10, 5,
-			 0,  0,  0,  0,  0,  0,  0,  0,
+			 0,  0,  0,  0,  0,  0,  0,  0
         };
 		public static readonly int[] WQueenBonus =
 		{
-			-20,-10,-10, -5, -5,-10,-10,-20
+			-20,-10,-10, -5, -5,-10,-10,-20,
 			-10,  0,  5,  0,  0,  0,  0,-10,
 			-10,  5,  5,  5,  5,  5,  0,-10,
 			  0,  0,  5,  5,  5,  5,  0, -5,
 			 -5,  0,  5,  5,  5,  5,  0, -5,
 			-10,  0,  5,  5,  5,  5,  0,-10,
 			-10,  0,  0,  0,  0,  0,  0,-10,
-			-20,-10,-10, -5, -5,-10,-10,-20,
+			-20,-10,-10, -5, -5,-10,-10,-20
 		};
 		public static readonly int[] WKingBonus =
 		{
@@ -95,57 +95,40 @@ namespace ChessC_
 			-30, -40, -40, -50, -50, -40, -40, -30,
 			-30, -40, -40, -50, -50, -40, -40, -30,
 			-30, -40, -40, -50, -50, -40, -40, -30,
-			-30, -40, -40, -50, -50, -40, -40, -30,
+			-30, -40, -40, -50, -50, -40, -40, -30
 		};
 
         public static int EvalBoard(Board board, bool isWhite)
-		{
-			ulong fP, fN, fB, fR, fQ, fK;
-			ulong eP, eN, eB, eR, eQ, eK;
-			int score = 0;
+        {
+            int score = 0;
 
-			if (isWhite)
-			{
-				fP = board.bitboards[(int)Piece.WhitePawn];
-				fN = board.bitboards[(int)Piece.WhiteKnight];
-				fB = board.bitboards[(int)Piece.WhiteBishop];
-				fR = board.bitboards[(int)Piece.WhiteRook];
-				fQ = board.bitboards[(int)Piece.WhiteQueen];
-				fK = board.bitboards[(int)Piece.WhiteKing];
+            // Use ternary operators to reduce branching and improve readability
+            ulong fP = board.bitboards[(int)(isWhite ? Piece.WhitePawn : Piece.BlackPawn)];
+            ulong fN = board.bitboards[(int)(isWhite ? Piece.WhiteKnight : Piece.BlackKnight)];
+            ulong fB = board.bitboards[(int)(isWhite ? Piece.WhiteBishop : Piece.BlackBishop)];
+            ulong fR = board.bitboards[(int)(isWhite ? Piece.WhiteRook : Piece.BlackRook)];
+            ulong fQ = board.bitboards[(int)(isWhite ? Piece.WhiteQueen : Piece.BlackQueen)];
+            ulong fK = board.bitboards[(int)(isWhite ? Piece.WhiteKing : Piece.BlackKing)];
 
-				eP = board.bitboards[(int)Piece.BlackPawn];
-				eN = board.bitboards[(int)Piece.BlackKnight];
-				eB = board.bitboards[(int)Piece.BlackBishop];
-				eR = board.bitboards[(int)Piece.BlackRook];
-				eQ = board.bitboards[(int)Piece.BlackQueen];
-				eK = board.bitboards[(int)Piece.BlackKing];
-			}
-			else
-			{
-				fP = board.bitboards[(int)Piece.BlackPawn];
-				fN = board.bitboards[(int)Piece.BlackKnight];
-				fB = board.bitboards[(int)Piece.BlackBishop];
-				fR = board.bitboards[(int)Piece.BlackRook];
-				fQ = board.bitboards[(int)Piece.BlackQueen];
-				fK = board.bitboards[(int)Piece.BlackKing];
+            ulong eP = board.bitboards[(int)(isWhite ? Piece.BlackPawn : Piece.WhitePawn)];
+            ulong eN = board.bitboards[(int)(isWhite ? Piece.BlackKnight : Piece.WhiteKnight)];
+            ulong eB = board.bitboards[(int)(isWhite ? Piece.BlackBishop : Piece.WhiteBishop)];
+            ulong eR = board.bitboards[(int)(isWhite ? Piece.BlackRook : Piece.WhiteRook)];
+            ulong eQ = board.bitboards[(int)(isWhite ? Piece.BlackQueen : Piece.WhiteQueen)];
+            ulong eK = board.bitboards[(int)(isWhite ? Piece.BlackKing : Piece.WhiteKing)];
 
-				eP = board.bitboards[(int)Piece.WhitePawn];
-				eN = board.bitboards[(int)Piece.WhiteKnight];
-				eB = board.bitboards[(int)Piece.WhiteBishop];
-				eR = board.bitboards[(int)Piece.WhiteRook];
-				eQ = board.bitboards[(int)Piece.WhiteQueen];
-				eK = board.bitboards[(int)Piece.WhiteKing];
-			}
-			score += evalMaterials(fP, fN, fB, fR, fQ, eP, eN, eB, eR, eQ);
-			score += EvalKnight(fN, eN, isWhite);
-			score += EvalPawn(fP, eP, isWhite);
-			score += EvalKing(fK, eK, isWhite);
-            score += EvalBishop(fB, eB, isWhite);
-            score += EvalQueen(fQ, eQ, isWhite);
-			score += EvalRook(fR, eR, isWhite);
+            // Inline method calls to reduce overhead
+            score += evalMaterials(fP, fN, fB, fR, fQ, eP, eN, eB, eR, eQ)
+                   + EvalKnight(fN, eN, isWhite)
+                   + EvalPawn(fP, eP, isWhite)
+                   + EvalKing(fK, eK, isWhite)
+                   + EvalBishop(fB, eB, isWhite)
+                   + EvalQueen(fQ, eQ, isWhite)
+                   + EvalRook(fR, eR, isWhite);
+
             return score;
-		}
-		private static int evalMaterials(
+        }
+        private static int evalMaterials(
 			ulong fP, ulong fN, ulong fB, ulong fR, ulong fQ,
 			ulong eP, ulong eN, ulong eB, ulong eR, ulong eQ
 		)
@@ -165,75 +148,8 @@ namespace ChessC_
 
 			return score;
 		}
-		private static int EvalPawn(ulong fP, ulong eP, bool isWhite)
-		{
-			ulong wP = isWhite ? fP : eP; // White pawns
-            ulong bP = isWhite ? eP : fP; // Black pawns
-            int score = 0;
-			if (isWhite)
-			{
-				for (int i = 0; i < 64; i++)
-				{
-					if ((wP & (1UL << i)) != 0)
-					{
-						score += WPawnBonus[i];
-					}
-					if ((bP & (1UL << i)) != 0)
-					{
-						score -= WPawnBonus[Mirror64(i)]; // Mirror for opponent
-					}
-				}
-			} else
-			{
-                for (int i = 0; i < 64; i++)
-                {
-                    if ((wP & (1UL << i)) != 0)
-                    {
-                        score -= WPawnBonus[i]; 
-                    }
-                    if ((bP & (1UL << i)) != 0)
-                    {
-                        score += WPawnBonus[Mirror64(i)];
-                    }
-                }
-            }
-				return score;
-		}
-		private static int EvalKnight(ulong fN, ulong eN, bool isWhite)
-		{
-            ulong wN = isWhite ? fN : eN; // White pawns
-            ulong bN = isWhite ? eN : fN; // Black pawns
-            int score = 0;
-            if (isWhite)
-            {
-                for (int i = 0; i < 64; i++)
-                {
-                    if ((wN & (1UL << i)) != 0)
-                    {
-                        score += WKnightBonus[i];
-                    }
-                    if ((bN & (1UL << i)) != 0)
-                    {
-                        score -= WKnightBonus[Mirror64(i)]; // Mirror for opponent
-                    }
-                }
-            }
-            else
-            {
-                for (int i = 0; i < 64; i++)
-                {
-                    if ((wN & (1UL << i)) != 0)
-                    {
-                        score -= WKnightBonus[i];
-                    }
-                    if ((bN & (1UL << i)) != 0)
-                    {
-                        score += WKnightBonus[Mirror64(i)];
-                    }
-                }
-            }
-            return score;
-        }
+		private static int EvalPawn(ulong fP, ulong eP, bool isWhite) => EvalPiece(fP, eP, isWhite, WPawnBonus);
+		private static int EvalKnight(ulong fN, ulong eN, bool isWhite) => EvalPiece(fN, eN, isWhite, WKnightBonus);
 		private static int EvalKing(ulong fK, ulong eK, bool isWhite)
 		{
 			int score = 0;
@@ -244,127 +160,46 @@ namespace ChessC_
 				wKsq = BitOperations.TrailingZeroCount(fK); bKsq = BitOperations.TrailingZeroCount(eK);
 				score += WKingBonus[wKsq];
 				score -= WKingBonus[Mirror64(bKsq)];
-			} else
+			}
+			else
 			{
-                wKsq = BitOperations.TrailingZeroCount(eK); bKsq = BitOperations.TrailingZeroCount(fK);
+				wKsq = BitOperations.TrailingZeroCount(eK); bKsq = BitOperations.TrailingZeroCount(fK);
 				score -= WKingBonus[wKsq];
 				score += WKingBonus[Mirror64(bKsq)];
-            }
-            return score;
-        }
-        private static int EvalBishop(ulong fB, ulong eB, bool isWhite)
+			}
+			return score;
+		}
+		private static int EvalBishop(ulong fB, ulong eB, bool isWhite) => EvalPiece(fB, eB, isWhite, WBishopBonus);
+		private static int EvalQueen(ulong fQ, ulong eQ, bool isWhite) => EvalPiece(fQ, eQ, isWhite, WQueenBonus);
+		private static int EvalRook(ulong fR, ulong eR, bool isWhite) => EvalPiece(fR, eR, isWhite, WRookBonus);
+        private static int EvalPiece(ulong f, ulong e, bool isWhite, int[] bonusTable)
         {
-            ulong wB = isWhite ? fB : eB; // White bishops
-            ulong bB = isWhite ? eB : fB; // Black bishops
             int score = 0;
-            if (isWhite)
+            // Evaluate friendly pieces
+            while (f != 0)
             {
-                for (int i = 0; i < 64; i++)
-                {
-                    if ((wB & (1UL << i)) != 0)
-                    {
-                        score += WBishopBonus[i];
-                    }
-                    if ((bB & (1UL << i)) != 0)
-                    {
-                        score -= WBishopBonus[Mirror64(i)]; // Mirror for opponent
-                    }
-                }
+                int sq = BitOperations.TrailingZeroCount(f);
+                score += isWhite ? bonusTable[sq] : -bonusTable[sq];
+                f &= f - 1; // Clear least significant bit
             }
-            else
+            // Evaluate enemy pieces (mirrored)
+            while (e != 0)
             {
-                for (int i = 0; i < 64; i++)
-                {
-                    if ((wB & (1UL << i)) != 0)
-                    {
-                        score -= WBishopBonus[i];
-                    }
-                    if ((bB & (1UL << i)) != 0)
-                    {
-                        score += WBishopBonus[Mirror64(i)];
-                    }
-                }
+                int sq = BitOperations.TrailingZeroCount(e);
+                int mirrored = Mirror64(sq);
+                score += isWhite ? -bonusTable[mirrored] : bonusTable[mirrored];
+                e &= e - 1; // Clear least significant bit
             }
             return score;
         }
-		private static int EvalQueen(ulong fQ, ulong eQ, bool isWhite)
+		static int Mirror64(int sq)
 		{
-            ulong wQ = isWhite ? fQ : eQ; // White queens
-            ulong bQ = isWhite ? eQ : fQ; // Black queens
-            int score = 0;
-            if (isWhite)
-            {
-                for (int i = 0; i < 64; i++)
-                {
-                    if ((wQ & (1UL << i)) != 0)
-                    {
-                        score += WQueenBonus[i];
-                    }
-                    if ((bQ & (1UL << i)) != 0)
-                    {
-                        score -= WQueenBonus[Mirror64(i)]; // Mirror for opponent
-                    }
-                }
-            }
-            else
-            {
-                for (int i = 0; i < 64; i++)
-                {
-                    if ((wQ & (1UL << i)) != 0)
-                    {
-                        score -= WQueenBonus[i];
-                    }
-                    if ((bQ & (1UL << i)) != 0)
-                    {
-                        score += WQueenBonus[Mirror64(i)];
-                    }
-                }
-            }
-            return score;
-        }
-		private static int EvalRook(ulong fR, ulong eR, bool isWhite)
-		{
-            ulong wR = isWhite ? fR : eR; // White rooks
-            ulong bR = isWhite ? eR : fR; // Black rooks
-            int score = 0;
-            if (isWhite)
-            {
-                for (int i = 0; i < 64; i++)
-                {
-                    if ((wR & (1UL << i)) != 0)
-                    {
-                        score += WRookBonus[i];
-                    }
-                    if ((bR & (1UL << i)) != 0)
-                    {
-                        score -= WRookBonus[Mirror64(i)]; // Mirror for opponent
-                    }
-                }
-            }
-            else
-            {
-                for (int i = 0; i < 64; i++)
-                {
-                    if ((wR & (1UL << i)) != 0)
-                    {
-                        score -= WRookBonus[i];
-                    }
-                    if ((bR & (1UL << i)) != 0)
-                    {
-                        score += WRookBonus[Mirror64(i)];
-                    }
-                }
-            }
-            return score;
-        }
-        static int Mirror64(int sq)
-        {
-            // sq is 0..63 with 0=a1, 1=b1, … 7=h1, 8=a2, …, 63=h8.
-            // We want to flip rank 1<->8, 2<->7, … so:
-            int file = sq % 8;
-            int rank = sq / 8;           // 0..7 for ranks 1..8
-            int flippedRank = 7 - rank;  // 7->0, 6->1, …, 0->7
-            return flippedRank * 8 + file;
-        }
-    }
+			// sq is 0..63 with 0=a1, 1=b1, … 7=h1, 8=a2, …, 63=h8.
+			// We want to flip rank 1<->8, 2<->7, … so:
+			int file = sq % 8;
+			int rank = sq / 8;           // 0..7 for ranks 1..8
+			int flippedRank = 7 - rank;  // 7->0, 6->1, …, 0->7
+			return flippedRank * 8 + file;
+		}
+	}
 }

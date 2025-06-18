@@ -34,6 +34,12 @@ namespace ChessC_
             return ToAlgebraicNotation(move, null);
         }
 
+        public static string[] ToIndexedAlgebraicList(IEnumerable<Move> moves)
+        {
+            if (moves == null) return ["(null)"];
+            return [.. moves.Select((m, i) => $"[{i}] {ToAlgebraicNotation(m)}")];
+        }
+
         /// <summary>
         /// Call this overload with the full list of legal moves in the position.
         /// It will disambiguate automatically if two (or more) identical pieces can go to move.To.
@@ -41,7 +47,7 @@ namespace ChessC_
         public static string ToAlgebraicNotation(Move move, List<Move> legalMoves)
         {
             // 1) Handle castling
-            if (move.Flags.HasFlag(MoveFlags.Castling))
+            if ((move.Flags & MoveFlags.Castling) != 0)
             {
                 int fromFile = ((int)move.From) % 8;
                 int toFile = ((int)move.To) % 8;
@@ -55,16 +61,16 @@ namespace ChessC_
             string fromSq = SquareToString(move.From);
             string toSq = SquareToString(move.To);
             string promo = "";
-            if (move.Flags.HasFlag(MoveFlags.Promotion))
+            if ((move.Flags & MoveFlags.Promotion) != 0)
                 promo = "=" + Char.ToUpper(PromotionChar(move.PromotionPiece));
 
-            string capture = move.Flags.HasFlag(MoveFlags.Capture) ? "x" : "";
+            string capture = (move.Flags & MoveFlags.Capture) != 0 ? "x" : "";
             string checkOrMate = CheckOrMateSuffix(move.Flags);
 
             if (isPawn)
             {
                 // Pawn moves: exd5 or d5
-                if (move.Flags.HasFlag(MoveFlags.Capture))
+                if ((move.Flags & MoveFlags.Capture) != 0)
                 {
                     // file of origin + 'x' + toSquare
                     char fromFileChar = fromSq[0];
@@ -125,8 +131,8 @@ namespace ChessC_
 
         private static string CheckOrMateSuffix(MoveFlags flags)
         {
-            return flags.HasFlag(MoveFlags.Checkmate) ? "#" :
-                   flags.HasFlag(MoveFlags.Check) ? "+" :
+            return (flags & MoveFlags.Checkmate) != 0 ? "#" :
+                   (flags & MoveFlags.Check) != 0 ? "+" :
                    "";
         }
 

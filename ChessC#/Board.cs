@@ -15,9 +15,21 @@ namespace ChessC_
 		public int FullmoveNumber;
 		public ulong ZobristKey;
 	}
-
-	internal class Board
+	public struct UndoInfo
 	{
+		public Castling PreviousCastlingRights;
+		public Square PreviousEnPassantSquare;
+		public int PreviousHalfmoveClock;
+        public int PreviousFullmoveNumber;
+        public ulong PreviousZobristKey;
+	}
+
+	public class Board
+	{
+		public Board()
+		{
+			enPassantSquare = Square.None;
+		}
 		public ulong[] bitboards = new ulong[12]; // 6 piece types × 2 colors
 		public ulong[] occupancies = new ulong[3]; // White, Black, Both
 
@@ -31,7 +43,7 @@ namespace ChessC_
 		public ulong zobristKey;
 		
 		// History stack
-		private Stack<BoardState> history = new Stack<BoardState>();
+		private Stack<BoardState> history = [];
 
 		// Put in a constructor or reset method
 		public void ComputeInitialZobrist()
@@ -122,28 +134,116 @@ namespace ChessC_
 		}
 
 		// Applies a move and pushes state for undo
-		public void MakeMove(Move move)
+		public UndoInfo MakeSearchMove(Board board, Move move)
 		{
+            UndoInfo undo = new()
+            {
+                PreviousCastlingRights = board.castlingRights,
+                PreviousEnPassantSquare = board.enPassantSquare,
+                PreviousHalfmoveClock = board.halfmoveClock,
+                PreviousFullmoveNumber = board.fullmoveNumber,
+                PreviousZobristKey = board.zobristKey
+            };
+            ApplyMoveInternal(move);
+			return undo;
+        }
 
-			history.Push(SaveState());
-			ApplyMoveInternal(move);
-		}
+		public void MakeRealMove(Move move)
+		{
+            history.Push(SaveState());
+            ApplyMoveInternal(move);
+        }
 
 		// Undoes the last made move
-		public void UnmakeMove()
+		public void UnmakeMove(Move move, UndoInfo undoInfo)
 		{
-			if (history.Count > 0)
-			{
-				var prev = history.Pop();
-				RestoreState(prev);
-			}
-		}
+            // 1) Restore metadata
+            castlingRights = undoInfo.PreviousCastlingRights;
+            enPassantSquare = undoInfo.PreviousEnPassantSquare;
+            halfmoveClock = undoInfo.PreviousHalfmoveClock;
+            fullmoveNumber = undoInfo.PreviousFullmoveNumber;
+            zobristKey = undoInfo.PreviousZobristKey;
 
-        // Actual logic to mutate bitboards, occupancies, castling, en passant, etc.
+            // 2) Reverse piece movement
+            int fromIdx = (int)move.From;
+            int toIdx = (int)move.To;
+            int moved = (int)move.PieceMoved;
+
+            // Handle promotions
+            if ((move.Flags & MoveFlags.Promotion) != 0)
+            {
+                int promo = (int)move.PromotionPiece;
+                // Remove promoted piece
+                bitboards[promo] &= ~(1UL << toIdx);
+                // Restore pawn on source
+                bitboards[moved] |= (1UL << fromIdx);
+            }
+            else
+            {
+                // Normal move: remove from destination, restore at source
+                bitboards[moved] &= ~(1UL << toIdx);
+                bitboards[moved] |= (1UL << fromIdx);
+            }
+
+            // Handle captures
+            if ((move.Flags & MoveFlags.EnPassant) != 0)
+            {
+                int capIdx = (moved == (int)Piece.WhitePawn) ? toIdx - 8 : toIdx + 8;
+                Piece capPiece = (moved == (int)Piece.WhitePawn) ? Piece.BlackPawn : Piece.WhitePawn;
+                bitboards[(int)capPiece] |= (1UL << capIdx);
+            }
+            else if (move.PieceCaptured != Piece.None)
+            {
+                int captured = (int)move.PieceCaptured;
+                bitboards[captured] |= (1UL << toIdx);
+            }
+
+            // Handle castling rook restoration
+            if ((move.Flags & MoveFlags.Castling) != 0)
+            {
+                if (move.PieceMoved == Piece.WhiteKing && toIdx - fromIdx == 2)
+                {
+                    // King-side: rook from F1 back to H1
+                    bitboards[(int)Piece.WhiteRook] &= ~(1UL << (int)Square.F1);
+                    bitboards[(int)Piece.WhiteRook] |= (1UL << (int)Square.H1);
+                }
+                else if (move.PieceMoved == Piece.WhiteKing && fromIdx - toIdx == 2)
+                {
+                    // Queen-side: rook from D1 back to A1
+                    bitboards[(int)Piece.WhiteRook] &= ~(1UL << (int)Square.D1);
+                    bitboards[(int)Piece.WhiteRook] |= (1UL << (int)Square.A1);
+                }
+                else if (move.PieceMoved == Piece.BlackKing && toIdx - fromIdx == 2)
+                {
+                    // King-side: rook from F8 back to H8
+                    bitboards[(int)Piece.BlackRook] &= ~(1UL << (int)Square.F8);
+                    bitboards[(int)Piece.BlackRook] |= (1UL << (int)Square.H8);
+                }
+                else if (move.PieceMoved == Piece.BlackKing && fromIdx - toIdx == 2)
+                {
+                    // Queen-side: rook from D8 back to A8
+                    bitboards[(int)Piece.BlackRook] &= ~(1UL << (int)Square.D8);
+                    bitboards[(int)Piece.BlackRook] |= (1UL << (int)Square.A8);
+                }
+            }
+
+            // 3) Flip side to move back
+            sideToMove = (sideToMove == Color.White) ? Color.Black : Color.White;
+
+            // 4) Recompute occupancies
+            UpdateOccupancies();
+        }
+
         // Actual logic to mutate bitboards, occupancies, castling, en passant, etc.
         private void ApplyMoveInternal(Move move)
         {
-            // Zobrist: remove old state
+            int fromIdx = (int)move.From;
+            int toIdx = (int)move.To;
+            int moved = (int)move.PieceMoved;
+            ulong fromMask = 1UL << fromIdx;
+            ulong toMask = 1UL << toIdx;
+
+            // Remove old Zobrist state
             zobristKey ^= Zobrist.SideToMove;
             zobristKey ^= Zobrist.CastlingRights[(int)castlingRights];
             if (enPassantSquare != Square.None)
@@ -152,117 +252,103 @@ namespace ChessC_
             // Clear en passant
             enPassantSquare = Square.None;
 
-            // Update castling rights
+            // Update castling rights and Zobrist
             UpdateCastlingRights(move);
             zobristKey ^= Zobrist.CastlingRights[(int)castlingRights];
 
-            // Move piece from Source to Destination
-            int fromIdx = (int)move.From;
-            int toIdx = (int)move.To;
-            int moved = (int)move.PieceMoved;
-
-            // Zobrist: remove moving piece from source
+            // Remove moving piece from source
+            bitboards[moved] &= ~fromMask;
             zobristKey ^= Zobrist.PieceSquare[moved, fromIdx];
 
-            // Remove from source
-            bitboards[moved] &= ~(1UL << fromIdx);
-
-            // Handle captures
-            if (move.Flags.HasFlag(MoveFlags.EnPassant))
+            // Handle captures (including en passant)
+            if ((move.Flags & MoveFlags.EnPassant) != 0)
             {
                 int capIdx = (moved == (int)Piece.WhitePawn) ? toIdx - 8 : toIdx + 8;
+                ulong capMask = 1UL << capIdx;
                 int capPiece = (moved == (int)Piece.WhitePawn) ? (int)Piece.BlackPawn : (int)Piece.WhitePawn;
-                bitboards[capPiece] &= ~(1UL << capIdx);
+                bitboards[capPiece] &= ~capMask;
                 zobristKey ^= Zobrist.PieceSquare[capPiece, capIdx];
             }
             else if (move.PieceCaptured != Piece.None)
             {
                 int captured = (int)move.PieceCaptured;
-                bitboards[captured] &= ~(1UL << toIdx);
+                bitboards[captured] &= ~toMask;
                 zobristKey ^= Zobrist.PieceSquare[captured, toIdx];
             }
 
             // Promotions
-            if (move.Flags.HasFlag(MoveFlags.Promotion))
+            if ((move.Flags & MoveFlags.Promotion) != 0)
             {
-                // (A) The pawn was already “removed from fromIdx” above,
-                //     and we do NOT place a pawn at toIdx. So do NOT manipulate
-                //     bitboards[moved] at toIdx.
-
-                // (B) Instead, put the promotion piece on toIdx:
-                bitboards[moved] &= ~(1UL << toIdx);
-                zobristKey ^= Zobrist.PieceSquare[moved, toIdx];
-
-                // now add the promoted piece (queen/rook/bishop/knight)
                 int promo = (int)move.PromotionPiece;
-                bitboards[promo] |= (1UL << toIdx);
+                bitboards[promo] |= toMask;
                 zobristKey ^= Zobrist.PieceSquare[promo, toIdx];
             }
             else
             {
-                // Normal (non‐promotion) placement of the moved piece
-                bitboards[moved] |= (1UL << toIdx);
+                bitboards[moved] |= toMask;
                 zobristKey ^= Zobrist.PieceSquare[moved, toIdx];
             }
 
-            // Update occupancies
-            occupancies[(int)Color.White] = 0UL;
-            occupancies[(int)Color.Black] = 0UL;
-            for (int i = 0; i < 6; i++)
+            // Castling move (move rook)
+            if ((move.Flags & MoveFlags.Castling) != 0)
             {
-                occupancies[(int)Color.White] |= bitboards[i];
-                occupancies[(int)Color.Black] |= bitboards[i + 6];
+                int rookFrom, rookTo;
+                int rookPiece;
+                ulong rookFromMask, rookToMask;
+                if (move.PieceMoved == Piece.WhiteKing)
+                {
+                    rookPiece = (int)Piece.WhiteRook;
+                    if (toIdx - fromIdx == 2)
+                    {
+                        // White king-side
+                        rookFrom = (int)Square.H1; rookTo = (int)Square.F1;
+                    }
+                    else
+                    {
+                        // White queen-side
+                        rookFrom = (int)Square.A1; rookTo = (int)Square.D1;
+                    }
+                }
+                else
+                {
+                    rookPiece = (int)Piece.BlackRook;
+                    if (toIdx - fromIdx == 2)
+                    {
+                        // Black king-side
+                        rookFrom = (int)Square.H8; rookTo = (int)Square.F8;
+                    }
+                    else
+                    {
+                        // Black queen-side
+                        rookFrom = (int)Square.A8; rookTo = (int)Square.D8;
+                    }
+                }
+                rookFromMask = 1UL << rookFrom;
+                rookToMask = 1UL << rookTo;
+                bitboards[rookPiece] &= ~rookFromMask;
+                bitboards[rookPiece] |= rookToMask;
+                zobristKey ^= Zobrist.PieceSquare[rookPiece, rookFrom];
+                zobristKey ^= Zobrist.PieceSquare[rookPiece, rookTo];
             }
-            occupancies[2] = occupancies[0] | occupancies[1];
 
-            // En passant target
+            // En passant target (double pawn push: set to destination square)
             if (move.PieceMoved == Piece.WhitePawn && toIdx - fromIdx == 16)
             {
-                enPassantSquare = (Square)(fromIdx + 16);
-                zobristKey ^= Zobrist.EnPassantFile[fromIdx % 8];
+                enPassantSquare = (Square)toIdx;
+                zobristKey ^= Zobrist.EnPassantFile[toIdx % 8];
             }
             else if (move.PieceMoved == Piece.BlackPawn && fromIdx - toIdx == 16)
             {
-                enPassantSquare = (Square)(fromIdx - 16);
-                zobristKey ^= Zobrist.EnPassantFile[fromIdx % 8];
+                enPassantSquare = (Square)toIdx;
+                zobristKey ^= Zobrist.EnPassantFile[toIdx % 8];
             }
 
-            // Castling move
-            if (move.Flags.HasFlag(MoveFlags.Castling))
-            {
-                if (move.PieceMoved == Piece.WhiteKing && toIdx - fromIdx == 2)
-                {
-                    bitboards[(int)Piece.WhiteRook] &= ~(1UL << (int)Square.H1);
-                    zobristKey ^= Zobrist.PieceSquare[(int)Piece.WhiteRook, (int)Square.H1];
-                    bitboards[(int)Piece.WhiteRook] |= (1UL << (int)Square.F1);
-                    zobristKey ^= Zobrist.PieceSquare[(int)Piece.WhiteRook, (int)Square.F1];
-                }
-                else if (move.PieceMoved == Piece.WhiteKing && fromIdx - toIdx == 2)
-                {
-                    bitboards[(int)Piece.WhiteRook] &= ~(1UL << (int)Square.A1);
-                    zobristKey ^= Zobrist.PieceSquare[(int)Piece.WhiteRook, (int)Square.A1];
-                    bitboards[(int)Piece.WhiteRook] |= (1UL << (int)Square.D1);
-                    zobristKey ^= Zobrist.PieceSquare[(int)Piece.WhiteRook, (int)Square.D1];
-                }
-                else if (move.PieceMoved == Piece.BlackKing && toIdx - fromIdx == 2)
-                {
-                    bitboards[(int)Piece.BlackRook] &= ~(1UL << (int)Square.H8);
-                    zobristKey ^= Zobrist.PieceSquare[(int)Piece.BlackRook, (int)Square.H8];
-                    bitboards[(int)Piece.BlackRook] |= (1UL << (int)Square.F8);
-                    zobristKey ^= Zobrist.PieceSquare[(int)Piece.BlackRook, (int)Square.F8];
-                }
-                else if (move.PieceMoved == Piece.BlackKing && fromIdx - toIdx == 2)
-                {
-                    bitboards[(int)Piece.BlackRook] &= ~(1UL << (int)Square.A8);
-                    zobristKey ^= Zobrist.PieceSquare[(int)Piece.BlackRook, (int)Square.A8];
-                    bitboards[(int)Piece.BlackRook] |= (1UL << (int)Square.D8);
-                    zobristKey ^= Zobrist.PieceSquare[(int)Piece.BlackRook, (int)Square.D8];
-                }
-            }
+            // Update occupancies once at the end
+            UpdateOccupancies();
 
             // Update side to move and move counters
             sideToMove = sideToMove == Color.White ? Color.Black : Color.White;
-            if (move.PieceMoved == Piece.WhitePawn || move.PieceCaptured != Piece.None)
+            if (move.PieceMoved == Piece.WhitePawn || move.PieceMoved == Piece.BlackPawn || move.PieceCaptured != Piece.None)
                 halfmoveClock = 0;
             else
                 halfmoveClock++;
@@ -277,14 +363,24 @@ namespace ChessC_
         /// </summary>
         public void UpdateOccupancies()
         {
-            occupancies[(int)Color.White] = 0UL;
-            occupancies[(int)Color.Black] = 0UL;
-            for (int p = 0; p < 6; p++)
-            {
-                occupancies[(int)Color.White] |= bitboards[p];
-                occupancies[(int)Color.Black] |= bitboards[p + 6];
-            }
-            occupancies[2] = occupancies[(int)Color.White] | occupancies[(int)Color.Black];
+            // Local variables for speed
+            ulong white = 0UL, black = 0UL;
+            // Unroll loop for 6 piece types (0-5: white, 6-11: black)
+            white |= bitboards[0];
+            white |= bitboards[1];
+            white |= bitboards[2];
+            white |= bitboards[3];
+            white |= bitboards[4];
+            white |= bitboards[5];
+            black |= bitboards[6];
+            black |= bitboards[7];
+            black |= bitboards[8];
+            black |= bitboards[9];
+            black |= bitboards[10];
+            black |= bitboards[11];
+            occupancies[(int)Color.White] = white;
+            occupancies[(int)Color.Black] = black;
+            occupancies[2] = white | black;
         }
-    }
+	}
 }

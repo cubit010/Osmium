@@ -8,6 +8,7 @@
 		<AssemblyName>ChessC#</AssemblyName>
 		<RootNamespace>ChessC_</RootNamespace>
 		<OutputType>Exe</OutputType>
+		<PlatformTarget>AnyCPU</PlatformTarget>
 	</PropertyGroup>
 
 	<!-- Optional: include App.config if still needed -->
