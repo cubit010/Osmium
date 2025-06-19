@@ -13,14 +13,14 @@ namespace ChessC_
         private const ulong FileA = 0x0101010101010101UL;
         private const ulong FileH = 0x8080808080808080UL;
         internal static ulong RookAttacks(
-    int square,
-    ulong friendly,
-    ulong enemy,
-    bool isWhite,
-    Board board,
-    bool isQueen,
-    List<Move> moves
-)
+            int square,
+            ulong friendly,
+            ulong enemy,
+            bool isWhite,
+            Board board,
+            bool isQueen,
+            List<Move> moves
+        )
         {
             ulong occupancy = board.occupancies[(int)Color.White] | board.occupancies[(int)Color.Black];
             ulong attacks = Magics.GetRookAttacks(square, occupancy);
@@ -306,9 +306,9 @@ namespace ChessC_
                 // not on file A
                 // ->
                 //left to center en passant, shift right / down a digit
-                if ((board.bitboards[(int)Piece.WhitePawn] & 1UL << (enPassantSq - 1)) != 0)
+                if ((board.bitboards[(int)Piece.WhitePawn] & 1UL << (enPassantSq - 9)) != 0)
                 {
-                    moves.Add(new((Square)(enPassantSq - 1), (Square)(enPassantSq + 8), Piece.WhitePawn, Piece.BlackPawn, MoveFlags.EnPassant));
+                    moves.Add(new((Square)(enPassantSq - 9), (Square)(enPassantSq), Piece.WhitePawn, Piece.BlackPawn, MoveFlags.EnPassant));
                 }
             }
             if (file < 7)
@@ -316,9 +316,9 @@ namespace ChessC_
                 // not on file H
                 // <-
                 //right to center en passant, shift left / up a digit to find if there's a pawn on right side
-                if ((board.bitboards[(int)Piece.WhitePawn] & 1UL << (enPassantSq + 1)) != 0)
+                if ((board.bitboards[(int)Piece.WhitePawn] & 1UL << (enPassantSq + 7)) != 0)
                 {
-                    moves.Add(new((Square)(enPassantSq + 1), (Square)(enPassantSq + 8), Piece.WhitePawn, Piece.BlackPawn, MoveFlags.EnPassant));
+                    moves.Add(new((Square)(enPassantSq + 7), (Square)(enPassantSq), Piece.WhitePawn, Piece.BlackPawn, MoveFlags.EnPassant));
                 }
             }
 
@@ -331,18 +331,18 @@ namespace ChessC_
             {
                 // not on file A
                 // left to center en passant, shift right / up a digit
-                if ((board.bitboards[(int)Piece.BlackPawn] & (1UL << (enPassantSq - 1))) != 0)
+                if ((board.bitboards[(int)Piece.BlackPawn] & (1UL << (enPassantSq + 7))) != 0)
                 {
-                    moves.Add(new((Square)(enPassantSq - 1), (Square)(enPassantSq - 8), Piece.BlackPawn, Piece.WhitePawn, MoveFlags.EnPassant));
+                    moves.Add(new((Square)(enPassantSq + 7), (Square)(enPassantSq), Piece.BlackPawn, Piece.WhitePawn, MoveFlags.EnPassant));
                 }
             }
             if (file < 7)
             {
                 // not on file H
                 // right to center en passant, shift left / down a digit
-                if ((board.bitboards[(int)Piece.BlackPawn] & (1UL << (enPassantSq + 1))) != 0)
+                if ((board.bitboards[(int)Piece.BlackPawn] & (1UL << (enPassantSq + 9))) != 0)
                 {
-                    moves.Add(new((Square)(enPassantSq + 1), (Square)(enPassantSq - 8), Piece.BlackPawn, Piece.WhitePawn, MoveFlags.EnPassant));
+                    moves.Add(new((Square)(enPassantSq + 9), (Square)(enPassantSq), Piece.BlackPawn, Piece.WhitePawn, MoveFlags.EnPassant));
                 }
             }
         }

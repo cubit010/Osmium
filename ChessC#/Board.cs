@@ -120,19 +120,6 @@ namespace ChessC_
 			};
 		}
 
-		// Restore board state
-		private void RestoreState(BoardState state)
-		{
-			bitboards = (ulong[])state.Bitboards.Clone();
-			occupancies = (ulong[])state.Occupancies.Clone();
-			sideToMove = state.SideToMove;
-			castlingRights = state.CastlingRights;
-			enPassantSquare = state.EnPassantSquare;
-			halfmoveClock = state.HalfmoveClock;
-			fullmoveNumber = state.FullmoveNumber;
-			zobristKey = state.ZobristKey;	
-		}
-
 		// Applies a move and pushes state for undo
 		public UndoInfo MakeSearchMove(Board board, Move move)
 		{
@@ -331,15 +318,15 @@ namespace ChessC_
                 zobristKey ^= Zobrist.PieceSquare[rookPiece, rookTo];
             }
 
-            // En passant target (double pawn push: set to destination square)
+            // En passant target (double pawn push: set to square behind destination square)
             if (move.PieceMoved == Piece.WhitePawn && toIdx - fromIdx == 16)
             {
-                enPassantSquare = (Square)toIdx;
+                enPassantSquare = (Square)toIdx - 8;
                 zobristKey ^= Zobrist.EnPassantFile[toIdx % 8];
             }
             else if (move.PieceMoved == Piece.BlackPawn && fromIdx - toIdx == 16)
             {
-                enPassantSquare = (Square)toIdx;
+                enPassantSquare = (Square)toIdx + 8;
                 zobristKey ^= Zobrist.EnPassantFile[toIdx % 8];
             }
 
@@ -356,11 +343,6 @@ namespace ChessC_
             if (sideToMove == Color.White)
                 fullmoveNumber++;
         }
-
-        /// <summary>
-        /// Recomputes occupancies[White], occupancies[Black], and occupancies[Both]
-        /// from the per‐piece bitboards.
-        /// </summary>
         public void UpdateOccupancies()
         {
             // Local variables for speed

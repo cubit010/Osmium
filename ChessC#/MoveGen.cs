@@ -185,7 +185,7 @@ namespace ChessC_
 				if (board.enPassantSquare != Square.None)
 				{
 					int epsq = (int)board.enPassantSquare; // pawn's landing square (e.g., e5 for black)
-					int epCaptureSquare = epsq + 8;        // square behind black pawn (for white capture)
+					int epCaptureSquare = epsq;        // square behind black pawn (for white capture)
 
 					ulong epCaptureBit = 1UL << epCaptureSquare;
 
@@ -235,7 +235,7 @@ namespace ChessC_
 				if (board.enPassantSquare != Square.None)
 				{
 					int epsq = (int)board.enPassantSquare; // pawn's landing square (e.g., e4 for white)
-					int epCaptureSquare = epsq - 8;        // square behind white pawn (for black capture)
+					int epCaptureSquare = epsq;        // square behind white pawn (for black capture)
 
 					ulong epCaptureBit = 1UL << epCaptureSquare;
 

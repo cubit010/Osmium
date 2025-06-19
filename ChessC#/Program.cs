@@ -67,7 +67,7 @@ namespace ChessC_
 			bool playerPlaysWhite;
 			
 			// 2) Create transposition table (e.g. 16 MB)
-            var tt = new TranspositionTable(128);
+            var tt = new TranspositionTable(256);
 			tt.NewSearch();
 			Utils.PrintBoard(board);
 			int msThink = 5000; // Default thinking time in milliseconds
@@ -88,7 +88,7 @@ namespace ChessC_
                 }
                 else
                 {
-                    Console.WriteLine("Please enter 'y' for White or 'n' for Black.");
+                    Console.WriteLine("Please enter 'w'/'white' for White or 'b'/'black' for Black.");
                 }
             }
             while (true)

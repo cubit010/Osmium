@@ -81,12 +81,8 @@ namespace ChessC_
 
                 // Adjust to the square where the pawn that moved is
                 // If the en passant square is on rank 3 → pawn came from rank 2 → now on rank 4
-                if (rankIdx == 2) // '3' in FEN (White just moved)
-                    board.enPassantSquare = (Square)((rankIdx + 1) * 8 + fileIdx); // rank 4
-                else if (rankIdx == 5) // '6' in FEN (Black just moved)
-                    board.enPassantSquare = (Square)((rankIdx - 1) * 8 + fileIdx); // rank 5
-                else
-                    throw new ArgumentException($"Invalid FEN: unexpected en passant square rank '{ep}'", nameof(fen));
+                
+                board.enPassantSquare = (Square)((rankIdx) * 8 + fileIdx); // rank 4
             }
 
             // 5) Halfmove clock
