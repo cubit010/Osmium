@@ -1,5 +1,4 @@
-﻿using System;
-
+﻿
 namespace ChessC_
 {
 	/// <summary>
@@ -50,9 +49,9 @@ namespace ChessC_
 			}
 		}
 
-		/// <summary>
-		/// Generates a random 64-bit value using the RNG.
-		/// </summary>
+		
+		// Generates a random 64-bit value using the RNG.
+		
 		private static ulong RandomU64()
 		{
 			// Combine two 32-bit random values into one 64-bit

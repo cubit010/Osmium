@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
+﻿
 using System.Numerics;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace ChessC_
 {
@@ -159,13 +154,13 @@ namespace ChessC_
 			{
 				wKsq = BitOperations.TrailingZeroCount(fK); bKsq = BitOperations.TrailingZeroCount(eK);
 				score += WKingBonus[wKsq];
-				score -= WKingBonus[Mirror64(bKsq)];
+				score -= WKingBonus[MirrorColor(bKsq)];
 			}
 			else
 			{
 				wKsq = BitOperations.TrailingZeroCount(eK); bKsq = BitOperations.TrailingZeroCount(fK);
 				score -= WKingBonus[wKsq];
-				score += WKingBonus[Mirror64(bKsq)];
+				score += WKingBonus[MirrorColor(bKsq)];
 			}
 			return score;
 		}
@@ -186,19 +181,17 @@ namespace ChessC_
             while (e != 0)
             {
                 int sq = BitOperations.TrailingZeroCount(e);
-                int mirrored = Mirror64(sq);
+                int mirrored = MirrorColor(sq);
                 score += isWhite ? -bonusTable[mirrored] : bonusTable[mirrored];
                 e &= e - 1; // Clear least significant bit
             }
             return score;
         }
-		static int Mirror64(int sq)
+		static int MirrorColor(int sq)
 		{
-			// sq is 0..63 with 0=a1, 1=b1, … 7=h1, 8=a2, …, 63=h8.
-			// We want to flip rank 1<->8, 2<->7, … so:
 			int file = sq % 8;
-			int rank = sq / 8;           // 0..7 for ranks 1..8
-			int flippedRank = 7 - rank;  // 7->0, 6->1, …, 0->7
+			int rank = sq / 8;           
+			int flippedRank = 7 - rank;  
 			return flippedRank * 8 + file;
 		}
 	}

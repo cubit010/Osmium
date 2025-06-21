@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
+﻿
 namespace ChessC_
 {
     public enum Square
@@ -34,7 +29,7 @@ namespace ChessC_
         BlackQueen = 10,
         BlackKing = 11,
 
-        None = -1  // Optional, for empty squares or error handling
+        None = -1  
     }
 
     public enum Color
@@ -106,6 +101,7 @@ namespace ChessC_
         {
             this.Flags |= flag;
         }
+        //no longer used, for performance purposes
         //public bool HasFlag(MoveFlags flag)
         //{
         //    return (Flags & flag) != 0;
