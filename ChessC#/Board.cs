@@ -364,5 +364,19 @@ namespace ChessC_
             occupancies[(int)Color.Black] = black;
             occupancies[2] = white | black;
         }
-	}
+        public Board Clone() { 
+            var newBoard = new Board
+            {
+                bitboards = (ulong[])this.bitboards.Clone(),
+                occupancies = (ulong[])this.occupancies.Clone(),
+                sideToMove = this.sideToMove,
+                castlingRights = this.castlingRights,
+                enPassantSquare = this.enPassantSquare,
+                halfmoveClock = this.halfmoveClock,
+                fullmoveNumber = this.fullmoveNumber,
+                zobristKey = this.zobristKey
+            };
+            return newBoard;
+        }
+    }
 }

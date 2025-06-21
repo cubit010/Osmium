@@ -9,22 +9,27 @@ namespace ChessC_
 {
     public static class Search
     {
-        // Tracks the current move path
-        //[ThreadStatic]
-        //private static List<Move> _currentPath;
-        //public static List<List<Move>> AllPaths = new List<List<Move>>();
+
 
         public static int MaxDepth = Program.MaxDepth;
         private const int MateScore = 1_000_000;
         private static readonly Move[,] killerMoves = new Move[MaxDepth + 1, 2];
         public static long NodesVisited;
 
+
+        internal static Move FindBestMoveLazySMP(Board board, TranspositionTable tt, int timeLimitMs, int threadCount)
+        {
+            Console.WriteLine("Lazy SMP search is not implemented yet.");
+            return default; // Placeholder for lazy SMP implementation
+        }
+
+
         internal static Move FindBestMove(Board board, TranspositionTable tt, int timeLimitMs)
         {
             Move lastBest = default;
             var searchStart = Stopwatch.StartNew();
 
-            int maxDepth = MaxDepth; 
+            int maxDepth = MaxDepth;
             for (int depth = 1; depth <= maxDepth; depth++)
             {
                 NodesVisited = 0;
@@ -63,31 +68,11 @@ namespace ChessC_
 
             foreach (var move in moves)
             {
-                //if (_currentPath != null) _currentPath.Add(move);
-                //var beforeBB = (ulong[])board.bitboards.Clone();
+               
 
-                // updated call signature
                 UndoInfo undo = board.MakeSearchMove(board, move);
                 int score = -Negamax(board, targetDepth - 1, -beta, -alpha, !isWhite, tt);
                 board.UnmakeMove(move, undo);
-
-                // drift check
-                //if (_currentPath != null)
-                //{
-                //    for (int i = 0; i < 12; i++)
-                //    {
-                //        if (board.bitboards[i] != beforeBB[i])
-                //        {
-                //            Console.WriteLine($"*** DRIFT at root bitboard[{i}] after path: {string.Join(" -> ", _currentPath.Select(m => MoveNotation.ToAlgebraicNotation(m)))}");
-                //            Utils.PrintBitboard(beforeBB[i]);
-                //            Utils.PrintBitboard(board.bitboards[i]);
-                //            Debugger.Break();
-                //            break;
-                //        }
-                //    }
-                //}
-
-                //if (_currentPath != null) _currentPath.RemoveAt(_currentPath.Count - 1);
 
                 if (score > bestScore)
                 {
@@ -105,7 +90,7 @@ namespace ChessC_
             NodesVisited++;
             if (depth == 0)
             {
-                //if (_currentPath != null) AllPaths.Add(new List<Move>(_currentPath));
+               
                 return Quiesce(board, alpha, beta, isWhiteToMove);
             }
 
@@ -129,27 +114,10 @@ namespace ChessC_
 
             foreach (var move in moves)
             {
-                //if (_currentPath != null) _currentPath.Add(move);
-                //var beforeBB = (ulong[])board.bitboards.Clone();
 
                 UndoInfo undo = board.MakeSearchMove(board, move);
                 int score = -Negamax(board, depth - 1, -beta, -alpha, !isWhiteToMove, tt);
                 board.UnmakeMove(move, undo);
-
-                //if (_currentPath != null)
-                //{
-                //    for (int i = 0; i < 12; i++)
-                //    {
-                //        if (board.bitboards[i] != beforeBB[i])
-                //        {
-                //            Console.WriteLine($"*** DRIFT at ply bitboard[{i}] after path: {string.Join(" -> ", _currentPath.Select(m => MoveNotation.ToAlgebraicNotation(m)))}");
-                //            Debugger.Break();
-                //            break;
-                //        }
-                //    }
-                //}
-
-                //if (_currentPath != null) _currentPath.RemoveAt(_currentPath.Count - 1);
 
                 if (score > bestScore)
                 {
@@ -191,27 +159,11 @@ namespace ChessC_
 
             foreach (var move in capMoves)
             {
-                //if (_currentPath != null) _currentPath.Add(move);
-                //var beforeBB = (ulong[])board.bitboards.Clone();
 
                 UndoInfo undo = board.MakeSearchMove(board, move);
                 int score = -Quiesce(board, -beta, -alpha, !isWhiteToMove);
                 board.UnmakeMove(move, undo);
 
-                //if (_currentPath != null)
-                //{
-                //    for (int i = 0; i < 12; i++)
-                //    {
-                //        if (board.bitboards[i] != beforeBB[i])
-                //        {
-                //            Console.WriteLine($"*** DRIFT in quiesce bitboard[{i}] after path: {string.Join(" -> ", _currentPath.Select(m => MoveNotation.ToAlgebraicNotation(m)))}");
-                //            Debugger.Break();
-                //            break;
-                //        }
-                //    }
-                //}
-
-                //if (_currentPath != null) _currentPath.RemoveAt(_currentPath.Count - 1);
                 if (score >= beta) return beta;
                 alpha = Math.Max(alpha, score);
             }
