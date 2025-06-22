@@ -148,7 +148,6 @@ namespace ChessC_
 		private static int EvalKing(ulong fK, ulong eK, bool isWhite)
 		{
 			int score = 0;
-			int i = 0;
 			int wKsq, bKsq;
 			if (isWhite)
 			{

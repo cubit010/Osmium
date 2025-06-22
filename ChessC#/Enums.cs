@@ -40,11 +40,11 @@ namespace ChessC_
     [Flags]
     public enum Castling
     {
-        None = 0b0000, // 0
-        WhiteKing = 0b0001, // 1
-        WhiteQueen = 0b0010, // 2
-        BlackKing = 0b0100, // 4
-        BlackQueen = 0b1000  // 8
+        None = 0b0000, 
+        WhiteKing = 0b0001,     // 1
+        WhiteQueen = 0b0010,    // 2
+        BlackKing = 0b0100,     // 4
+        BlackQueen = 0b1000     // 8
     }
     [Flags]
     public enum MoveFlags
@@ -96,16 +96,13 @@ namespace ChessC_
                 move += PromotionToChar(PromotionPiece);
             return move;
         }
-        //do not call in a foreach
+
+        //must not be called in a foreach because foreach modifies flags by creating a separate copy
         public void AddMoveFlag(MoveFlags flag)
         {
             this.Flags |= flag;
         }
-        //no longer used, for performance purposes
-        //public bool HasFlag(MoveFlags flag)
-        //{
-        //    return (Flags & flag) != 0;
-        //}
+
         private static char PromotionToChar(Piece piece)
         {
             return piece switch

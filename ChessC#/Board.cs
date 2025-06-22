@@ -118,8 +118,51 @@ namespace ChessC_
 			};
 		}
 
-		// Applies a move and pushes state for undo
-		public UndoInfo MakeSearchMove(Board board, Move move)
+        public struct NullMoveUndoInfo
+        {
+            public Square PreviousEnPassantSquare;
+            public int PreviousHalfmoveClock;
+            public int PreviousFullmoveNumber;
+            public ulong PreviousZobristKey;
+        }
+
+        public NullMoveUndoInfo MakeNullMove()
+        {
+            var undo = new NullMoveUndoInfo
+            {
+                PreviousEnPassantSquare = enPassantSquare,
+                PreviousHalfmoveClock = halfmoveClock,
+                PreviousFullmoveNumber = fullmoveNumber,
+                PreviousZobristKey = zobristKey
+            };
+
+            // Remove en passant from zobrist if set
+            if (enPassantSquare != Square.None)
+                zobristKey ^= Zobrist.EnPassantFile[(int)enPassantSquare % 8];
+
+            enPassantSquare = Square.None;
+
+            if (sideToMove == Color.Black)
+                fullmoveNumber++;
+            sideToMove = (sideToMove == Color.White) ? Color.Black : Color.White;
+            halfmoveClock++;
+            zobristKey ^= Zobrist.SideToMove;
+
+            return undo;
+        }
+
+        public void UnmakeNullMove(NullMoveUndoInfo undo)
+        {
+            enPassantSquare = undo.PreviousEnPassantSquare;
+            halfmoveClock = undo.PreviousHalfmoveClock;
+            fullmoveNumber = undo.PreviousFullmoveNumber;
+            zobristKey = undo.PreviousZobristKey;
+
+            sideToMove = (sideToMove == Color.White) ? Color.Black : Color.White;
+        }
+
+        // Applies a move and pushes state for undo
+        public UndoInfo MakeSearchMove(Board board, Move move)
 		{
             UndoInfo undo = new()
             {

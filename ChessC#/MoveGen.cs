@@ -5,8 +5,7 @@ namespace ChessC_
 {
 	internal static class MoveGen
 	{
-		public const ulong Rank4 = 0x00000000FF000000; // squares a4–h4
-		public const ulong Rank5 = 0x000000FF00000000; // squares a5–h5
+	
 		public static void FlagCheckAndMate(Board board, List<Move> moves, bool isWhite)
 		{
 			bool opponent = !isWhite;
@@ -342,9 +341,11 @@ namespace ChessC_
 		private const ulong FileH = 0x8080808080808080UL;
 		private const ulong Rank1 = 0x00000000000000FFUL;
 		private const ulong Rank8 = 0xFF00000000000000UL;
+        private const ulong Rank4 = 0x00000000FF000000; 
+        private const ulong Rank5 = 0x000000FF00000000; 
 
-		// ─── initialization ──────────────────────────────────────────────────
-		internal static Piece FindCapturedPiece(Board board, Square sq, bool isWhite)
+        // ─── initialization ──────────────────────────────────────────────────
+        internal static Piece FindCapturedPiece(Board board, Square sq, bool isWhite)
 		{
 			ulong mask = 1UL << (int)sq;
 			//searches other color for cap piece
