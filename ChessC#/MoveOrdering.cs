@@ -3,6 +3,7 @@ namespace ChessC_
 {
 	internal static class MoveOrdering
 	{
+		private static readonly int[] PieceValues = { 100, 320, 330, 500, 900, 20000 }; // Pawn, Knight, Bishop, Rook, Queen, King
 		private static readonly int[,] MVVLVA = new int[6, 6]
 		{
 			{   900,   700,   700,   500,   100,  -9000 },
@@ -18,13 +19,60 @@ namespace ChessC_
 
 		private static readonly int[,] historyHeuristic = new int[64, 64];
 
-		// Helper struct for scoring moves
+		// Helper struct for scoring moves 
 		private struct ScoredMove(Move move, int score)
 		{
 			public Move Move = move;
 			public int Score = score;
 		}
+        public static int SEE(Board board, Move move)
+        {
+            // Get the value of the captured piece
+            int capturedValue = move.PieceCaptured != Piece.None ? PieceValues[((int)move.PieceCaptured) % 6] : 0;
 
+            // Save the board state and make the move
+            UndoInfo undo = board.MakeSearchMove(board, move);
+
+            // Find the least valuable recapture by the opponent
+            Color opponent = board.sideToMove == Color.White ? Color.Black : Color.White;
+            Move? recapture = FindLeastValuableAttacker(board, move.To, opponent);
+
+            int score;
+            if (recapture == null)
+            {
+                score = capturedValue;
+            }
+            else
+            {
+                // Recursive SEE: alternate sides
+                score = capturedValue - SEE(board, recapture.Value);
+            }
+
+            // Undo the move to restore the board
+            board.UnmakeMove(move, undo);
+
+            return score;
+        }
+        private static Move? FindLeastValuableAttacker(Board board, Square target, Color color)
+		{
+			// Generate all pseudo-legal moves for this color
+			var moves = MoveGen.GenerateAttackersToSquare(board, target, color);
+
+			Move? best = null;
+			int bestValue = int.MaxValue;
+
+			foreach (var move in moves)
+			{
+				int value = PieceValues[((int)move.PieceMoved) % 6];
+				if (value < bestValue)
+				{
+					best = move;
+					bestValue = value;
+				}
+				
+			}
+			return best;
+		}
 		public static List<Move> OrderMoves(
 			Board board,
 			List<Move> moves,
@@ -37,49 +85,42 @@ namespace ChessC_
 				return moves; // No need to allocate a new list
 
 			// Precompute PV and killer moves for O(1) lookup
-			HashSet<Move> specialMoves = [];
-			bool hasPV = pvMove.HasValue;
-			Move pv = hasPV ? pvMove.Value : default;
-			if (hasPV && pv.From != pv.To && moves.Contains(pv))
-				specialMoves.Add(pv);
+			HashSet<Move> specialMoves = new(count);
+			if (pvMove.HasValue && pvMove.Value.From != pvMove.Value.To && moves.Contains(pvMove.Value))
+				specialMoves.Add(pvMove.Value);
 
-			Move? k0 = null, k1 = null;
 			if ((uint)depth <= (uint)Search.MaxDepth)
 			{
-				k0 = killerMoves[depth, 0];
-				k1 = killerMoves[depth, 1];
-				if (k0.HasValue) specialMoves.Add(k0.Value);
-				if (k1.HasValue) specialMoves.Add(k1.Value);
+				if (killerMoves[depth, 0] is { } k0) specialMoves.Add(k0);
+				if (killerMoves[depth, 1] is { } k1) specialMoves.Add(k1);
 			}
 
-			List<ScoredMove> scoredMoves = new(count);
-			foreach (var move in moves)
-			{
-				if (move.From == move.To) continue; // Prevent crash
+			Span<ScoredMove> scoredMoves = stackalloc ScoredMove[count];
+			int scoredCount = 0;
 
-				int score;
-				if (hasPV && move.Equals(pv))
-					score = int.MaxValue;
-				else if (k0.HasValue && move.Equals(k0.Value))
-					score = int.MaxValue - 1;
-				else if (k1.HasValue && move.Equals(k1.Value))
-					score = int.MaxValue - 2;
-				else if (move.PieceCaptured != Piece.None)
-					score = 100000 + MVVLVA[(int)move.PieceCaptured % 6, (int)move.PieceMoved % 6];
-				else if ((move.Flags & MoveFlags.Promotion) != 0)
-					score = 90000 + (int)move.PromotionPiece * 100;
-				else
-					score = 50000 + historyHeuristic[(int)move.From, (int)move.To];
+            foreach (var move in moves)
+            {
+                if (move.From == move.To) continue; // Prevent crash
 
-				scoredMoves.Add(new ScoredMove(move, score));
-			}
+                int score = move.PieceCaptured != Piece.None
+                    ? 100000 + MVVLVA[(int)move.PieceMoved % 6, (int)move.PieceCaptured % 6]
+                    : (move.Flags & MoveFlags.Promotion) != 0
+                        ? 90000 + (int)move.PromotionPiece * 100
+                        : 50000 + historyHeuristic[(int)move.From, (int)move.To];
 
-			scoredMoves.Sort((a, b) => b.Score.CompareTo(a.Score));
+                if (pvMove.HasValue && move.Equals(pvMove.Value))
+                    score = int.MaxValue;
+                else if (specialMoves.Contains(move))
+                    score = int.MaxValue - specialMoves.Count;
 
-			
-			List<Move> ordered = new(scoredMoves.Count);
-			foreach (var sm in scoredMoves)
-				ordered.Add(sm.Move);
+                scoredMoves[scoredCount++] = new ScoredMove(move, score);
+            }
+
+            scoredMoves.Slice(0, scoredCount).Sort((a, b) => b.Score.CompareTo(a.Score));
+
+			List<Move> ordered = new(scoredCount);
+			for (int i = 0; i < scoredCount; i++)
+				ordered.Add(scoredMoves[i].Move);
 
 			return ordered;
 		}

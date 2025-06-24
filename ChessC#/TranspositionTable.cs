@@ -20,14 +20,14 @@ namespace ChessC_
         public int Score;
         public Move BestMove;
         public NodeType Type;
-        public int Age;
+        public byte Age;
     }
 
     public class TranspositionTable
     {
         private readonly TTEntry[] table;
         private readonly int sizeMask;
-        private int currentAge;
+        private byte currentAge;
 
         public TranspositionTable(int megabytes)
         {
@@ -48,7 +48,7 @@ namespace ChessC_
             int index = (int)(key & (ulong)sizeMask);
             ref TTEntry entry = ref table[index];
 
-            if (entry.Key != key || depth >= entry.Depth)
+            if (entry.Key != key || entry.Age != currentAge || depth > entry.Depth)
             {
                 entry.Key = key;
                 entry.Depth = depth;

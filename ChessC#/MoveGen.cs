@@ -5,8 +5,25 @@ namespace ChessC_
 {
 	internal static class MoveGen
 	{
-	
-		public static void FlagCheckAndMate(Board board, List<Move> moves, bool isWhite)
+        public static List<Move> GenerateAttackersToSquare(Board board, Square target, Color color)
+        {
+            List<Move> attackers = new();
+            List<Move> moves = new();
+            GenSemiLegal(board, moves, color == Color.White);
+
+            foreach (var move in moves)
+            {
+                // Normal captures
+                if (move.To == target && move.PieceCaptured != Piece.None)
+                    attackers.Add(move);
+
+                // En passant: the pawn lands on the en passant square, but the captured pawn is not on that square
+                if ((move.Flags & MoveFlags.EnPassant) != 0 && move.To == target)
+                    attackers.Add(move);
+            }
+            return attackers;
+        }
+        public static void FlagCheckAndMate(Board board, List<Move> moves, bool isWhite)
 		{
 			bool opponent = !isWhite;
 
@@ -313,9 +330,88 @@ namespace ChessC_
 
 			return moves;
 		}
+        public static List<Move> GeneratePromotionMoves(Board board, bool isWhite)
+        {
+            var moves = new List<Move>();
+            ulong pawns = board.bitboards[isWhite ? (int)Piece.WhitePawn : (int)Piece.BlackPawn];
+            ulong occ = board.occupancies[2];
+            ulong enemyOcc = board.occupancies[isWhite ? (int)Color.Black : (int)Color.White];
 
-		// helper: iterate over set bits in a bitboard
-		private static IEnumerable<int> BitIter(ulong bb)
+            // Promotion ranks
+            ulong promoRank = isWhite ? Rank8 : Rank1;
+            int forward = isWhite ? 8 : -8;
+            int left = isWhite ? 7 : -9;
+            int right = isWhite ? 9 : -7;
+
+            // Promotion piece types
+            Piece[] promoPieces = isWhite
+                ? new[] { Piece.WhiteQueen, Piece.WhiteRook, Piece.WhiteBishop, Piece.WhiteKnight }
+                : new[] { Piece.BlackQueen, Piece.BlackRook, Piece.BlackBishop, Piece.BlackKnight };
+
+            // 1. Quiet promotions (no capture)
+            ulong quietPromos = ((isWhite ? pawns << 8 : pawns >> 8) & promoRank) & ~occ;
+            foreach (var to in BitIter(quietPromos))
+            {
+                Square from = (Square)(to - forward);
+                Square toSq = (Square)to;
+                foreach (var promo in promoPieces)
+                {
+                    var move = new Move(from, toSq, isWhite ? Piece.WhitePawn : Piece.BlackPawn, Piece.None, MoveFlags.Promotion, promo);
+                    // Filter: only add if king is not in check after move
+                    UndoInfo undo = board.MakeSearchMove(board, move);
+                    bool inCheck = IsInCheck(board, isWhite);
+                    board.UnmakeMove(move, undo);
+                    if (!inCheck)
+                        moves.Add(move);
+                }
+            }
+            enemyOcc &= ~board.bitboards[isWhite ? (int)Piece.BlackKing : (int)Piece.WhiteKing];
+            // 2. Capture promotions (left and right)
+            // Left capture
+            ulong leftCaps = (isWhite ? (pawns & ~FileA) << 7 : (pawns & ~FileH) >> 9) & promoRank & enemyOcc;
+            foreach (var to in BitIter(leftCaps))
+            {
+                Square from = (Square)(to - left);
+                Square toSq = (Square)to;
+                Piece captured = FindCapturedPiece(board, toSq, isWhite);
+                // Prevent capturing a king
+                if (captured == Piece.WhiteKing || captured == Piece.BlackKing)
+                    continue;
+                foreach (var promo in promoPieces)
+                {
+                    var move = new Move(from, toSq, isWhite ? Piece.WhitePawn : Piece.BlackPawn, captured, MoveFlags.Promotion | MoveFlags.Capture, promo);
+                    UndoInfo undo = board.MakeSearchMove(board, move);
+                    bool inCheck = IsInCheck(board, isWhite);
+                    board.UnmakeMove(move, undo);
+                    if (!inCheck)
+                        moves.Add(move);
+                }
+            }
+            // Right capture
+            ulong rightCaps = (isWhite ? (pawns & ~FileH) << 9 : (pawns & ~FileA) >> 7) & promoRank & enemyOcc;
+            foreach (var to in BitIter(rightCaps))
+            {
+                Square from = (Square)(to - right);
+                Square toSq = (Square)to;
+                Piece captured = FindCapturedPiece(board, toSq, isWhite);
+                // Prevent capturing a king
+                if (captured == Piece.WhiteKing || captured == Piece.BlackKing)
+                    continue;
+                foreach (var promo in promoPieces)
+                {
+                    var move = new Move(from, toSq, isWhite ? Piece.WhitePawn : Piece.BlackPawn, captured, MoveFlags.Promotion | MoveFlags.Capture, promo);
+                    UndoInfo undo = board.MakeSearchMove(board, move);
+                    bool inCheck = IsInCheck(board, isWhite);
+                    board.UnmakeMove(move, undo);
+                    if (!inCheck)
+                        moves.Add(move);
+                }
+            }
+
+            return moves;
+        }
+        // helper: iterate over set bits in a bitboard
+        private static IEnumerable<int> BitIter(ulong bb)
 		{
 			while (bb != 0)
 			{

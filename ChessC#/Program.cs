@@ -3,7 +3,7 @@ namespace ChessC_
 {
 	class Program
 	{
-		public static int MaxDepth = 10;
+		public static int MaxDepth = 20;
 
         static void Main(string[] args)
 		{
@@ -46,10 +46,10 @@ namespace ChessC_
             // Fen.LoadFEN(board, "r4rk1/ppp2ppp/2n5/3q4/3P4/4Q3/PPP2PPP/R3R1K1 w - - 0 1");
 
             // Promotion Test — try d8=Q+, d8=R+, d8=N+, or d8=B+
-            // Fen.LoadFEN(board, "8/3P4/3k4/8/8/3K4/8/8 w - - 0 1");
+             //Fen.LoadFEN(board, "8/3P4/3k4/8/8/3K4/8/8 w - - 0 1");
 
             //M1 white Qa8#
-            //Fen.LoadFEN(board, "6k1/5ppp/8/8/8/8/5PPP/Q6K w - - 0 1");
+            //Fen.LoadFEN(board, "6k1/5ppp/5ppp/8/8/8/5PPP/Q5K1 w - - 0 1");
             //M1 black Re1#
             //Fen.LoadFEN(board, "r5k1/8/8/8/8/6PP/5PPP/7K w - - 0 1");
 
