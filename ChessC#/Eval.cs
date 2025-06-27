@@ -269,14 +269,17 @@ namespace ChessC_
         private static readonly int[] PiecePhase = { 0, 1, 1, 2, 4, 0, 1, 1, 2, 4 }; // P,N,B,R,Q for both colors
         private const int MaxGamePhase = 24; // 4*2 (Q) + 2*4 (R) + 1*4 (B) + 1*4 (N)
 
-        private static readonly Dictionary<ulong, int> EvalCache = new();
+        const int EvalCacheSize = 1 << 23; // 2^23 = 16mil entries
+        static ulong[] evalCacheKeys = new ulong[EvalCacheSize];
+        static int[] evalCacheValues = new int[EvalCacheSize];
         public static int EvalBoard(Board board, bool isWhite)
         {
             // Use zobristKey XOR 1 for black, 0 for white to distinguish side to move
             ulong cacheKey = board.zobristKey ^ (isWhite ? 0UL : 1UL);
+            int index = (int)(cacheKey & (EvalCacheSize - 1)); // fast mod
 
-            if (EvalCache.TryGetValue(cacheKey, out int cachedEval))
-                return cachedEval;
+            if (evalCacheKeys[index] == cacheKey)
+                return evalCacheValues[index];
 
             int score = 0;
 
@@ -340,10 +343,10 @@ namespace ChessC_
 
                    + EvalPawnStructure(fP, eP, isWhite)
                    + EvalMobility(board, isWhite);
-                   
 
 
-            EvalCache[cacheKey] = score;
+            evalCacheKeys[index] = cacheKey;
+            evalCacheValues[index] = score;
             return score;
         }
         private static int evalMaterials(

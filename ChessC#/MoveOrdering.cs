@@ -73,59 +73,66 @@ namespace ChessC_
 			}
 			return best;
 		}
-		public static List<Move> OrderMoves(
-			Board board,
-			List<Move> moves,
-			Move? pvMove = null,
-			int depth = 0
-		)
-		{
-			int count = moves.Count;
-			if (count <= 1)
-				return moves; // No need to allocate a new list
+        public static List<Move> OrderMoves(Board board, List<Move> moves, Move? pvMove = null, int depth = 0)
+        {
+            int count = moves.Count;
+            if (count <= 1)
+                return moves;
 
-			// Precompute PV and killer moves for O(1) lookup
-			HashSet<Move> specialMoves = new(count);
-			if (pvMove.HasValue && pvMove.Value.From != pvMove.Value.To && moves.Contains(pvMove.Value))
-				specialMoves.Add(pvMove.Value);
+            // Inline matching for killer and PV
+            Move? killer0 = null, killer1 = null;
+            if ((uint)depth <= (uint)Search.MaxDepth)
+            {
+                killer0 = killerMoves[depth, 0];
+                killer1 = killerMoves[depth, 1];
+            }
 
-			if ((uint)depth <= (uint)Search.MaxDepth)
-			{
-				if (killerMoves[depth, 0] is { } k0) specialMoves.Add(k0);
-				if (killerMoves[depth, 1] is { } k1) specialMoves.Add(k1);
-			}
-
-			Span<ScoredMove> scoredMoves = stackalloc ScoredMove[count];
-			int scoredCount = 0;
+            Span<ScoredMove> scoredMoves = stackalloc ScoredMove[count];
+            int scoredCount = 0;
 
             foreach (var move in moves)
             {
-                if (move.From == move.To) continue; // Prevent crash
+                if (move.From == move.To)
+                    continue;
 
-                int score = move.PieceCaptured != Piece.None
-                    ? 100000 + MVVLVA[(int)move.PieceMoved % 6, (int)move.PieceCaptured % 6]
-                    : (move.Flags & MoveFlags.Promotion) != 0
-                        ? 90000 + (int)move.PromotionPiece * 100
-                        : 50000 + historyHeuristic[(int)move.From, (int)move.To];
+                int score;
 
+                // Score captures highest, then promotions, then history
+                if (move.PieceCaptured != Piece.None)
+                {
+                    score = 100_000 + MVVLVA[(int)move.PieceMoved % 6, (int)move.PieceCaptured % 6];
+                }
+                else if ((move.Flags & MoveFlags.Promotion) != 0)
+                {
+                    score = 90_000 + (int)move.PromotionPiece * 100;
+                }
+                else
+                {
+                    score = 50_000 + historyHeuristic[(int)move.From, (int)move.To];
+                }
+
+                // Boost PV / killers
                 if (pvMove.HasValue && move.Equals(pvMove.Value))
                     score = int.MaxValue;
-                else if (specialMoves.Contains(move))
-                    score = int.MaxValue - specialMoves.Count;
+                else if ((killer0.HasValue && move.Equals(killer0.Value)) ||
+                         (killer1.HasValue && move.Equals(killer1.Value)))
+                    score = int.MaxValue - 1;
 
                 scoredMoves[scoredCount++] = new ScoredMove(move, score);
             }
 
+            // Sort in descending order
             scoredMoves.Slice(0, scoredCount).Sort((a, b) => b.Score.CompareTo(a.Score));
 
-			List<Move> ordered = new(scoredCount);
-			for (int i = 0; i < scoredCount; i++)
-				ordered.Add(scoredMoves[i].Move);
+            List<Move> ordered = new(scoredCount);
+            for (int i = 0; i < scoredCount; i++)
+                ordered.Add(scoredMoves[i].Move);
 
-			return ordered;
-		}
+            return ordered;
+        }
 
-		public static void RecordKiller(int depth, Move move)
+
+        public static void RecordKiller(int depth, Move move)
 		{
 			if (depth < 0 || depth > Search.MaxDepth) return;
 			if (!killerMoves[depth, 0].HasValue

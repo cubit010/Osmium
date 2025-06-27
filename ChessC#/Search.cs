@@ -32,7 +32,7 @@ namespace ChessC_
 					break;
 				NodesVisited = 0;
 				// --- Aspiration Window ---
-				int window = 75; // Tune as needed
+				int window = 50 + 3*depth; // Tune as needed
 				int alpha = lastScore - window;
 				int beta = lastScore + window;
 				int score;
@@ -376,7 +376,7 @@ namespace ChessC_
 			if (depth >= 3 && !inCheck && HasSufficientMaterial(board, isWhiteToMove))
 			{
 				var undoNull = board.MakeNullMove();
-				int nullScore = -PVS(board, depth - 3, -beta, -beta + 1, !isWhiteToMove, tt);
+				int nullScore = -PVS(board, depth - (3+depth*2/9), -beta, -beta + 1, !isWhiteToMove, tt);
 				board.UnmakeNullMove(undoNull);
 
 				if (nullScore >= beta)
@@ -403,19 +403,23 @@ namespace ChessC_
                     !inCheck &&
                     move.PieceCaptured == Piece.None &&
                     (move.Flags & MoveFlags.Promotion) == 0 &&
-                    moveCount > 3 + depth) // threshold can be tuned
+                    moveCount > 3 + depth*7/9) // threshold can be tuned
                 {
                     continue; // Prune this late quiet move
                 }
 
                 // --- Futility Pruning ---
-                if (depth == 1 &&
+                if (depth == 2 &&
 					!inCheck &&
 					move.PieceCaptured == Piece.None &&
 					(move.Flags & MoveFlags.Promotion) == 0)
 				{
 					int staticEval = Eval.EvalBoard(board, isWhiteToMove);
+
+					//----------------------------------------
 					int futilityMargin = 180; // tuning needed
+					//----------------------------------------
+
 					if (staticEval + futilityMargin <= alpha)
 						continue; // Prune this move
 				}
@@ -438,7 +442,7 @@ namespace ChessC_
 				}
 				else if (canReduce)
 				{
-                    int R = 2 + depth / 6;
+                    int R = 3 + depth / 4;
                     // Reduced-depth null window search
                     score = -PVS(board, depth - R, -alpha - 1, -alpha, !isWhiteToMove, tt);
 					// If reduction fails high, re-search at full depth and window
@@ -470,6 +474,7 @@ namespace ChessC_
 					// Store killer moves/history as in your Negamax
 					if (move.PieceCaptured == Piece.None)
 					{
+						//below this
 						if (!move.Equals(killerMoves[depth, 0]))
 						{
 							killerMoves[depth, 1] = killerMoves[depth, 0];
