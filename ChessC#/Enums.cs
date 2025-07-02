@@ -67,6 +67,15 @@ namespace ChessC_
 
         public Piece PieceMoved;
         public Piece PieceCaptured;
+        public bool Equals(Move other)
+            => From == other.From
+            && To == other.To
+            && PromotionPiece == other.PromotionPiece;
+
+        public override int GetHashCode()
+            => ((int)From)
+             | ((int)To << 6)
+             | ((int)PromotionPiece << 12);
 
         public Move(
             Square from, 

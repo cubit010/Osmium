@@ -1,539 +1,600 @@
-﻿
+﻿using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace ChessC_
 {
-	internal static class MoveGen
-	{
-        public static List<Move> GenerateAttackersToSquare(Board board, Square target, Color color)
+    internal static class MoveGen
+    {
+        //currently unused, is only used by SEE but SEE isn't implemented
+        public static void GenerateAttackersToSquare(Board board, Square target, Color color, Span<Move> result, ref int count)
         {
-            List<Move> attackers = new();
-            List<Move> moves = new();
-            GenSemiLegal(board, moves, color == Color.White);
+            Span<Move> allMoves = stackalloc Move[256];
+            int tmpCount = 0;
+            GenSemiLegal(board, allMoves, ref tmpCount, color == Color.White);
 
-            foreach (var move in moves)
+            for (int i = 0; i < tmpCount; i++)
             {
-                // Normal captures
+                var move = allMoves[i];
                 if (move.To == target && move.PieceCaptured != Piece.None)
-                    attackers.Add(move);
+                    result[count++] = move;
 
-                // En passant: the pawn lands on the en passant square, but the captured pawn is not on that square
                 if ((move.Flags & MoveFlags.EnPassant) != 0 && move.To == target)
-                    attackers.Add(move);
+                    result[count++] = move;
             }
-            return attackers;
         }
-        public static void FlagCheckAndMate(Board board, List<Move> moves, bool isWhite)
-		{
-			bool opponent = !isWhite;
 
-			for (int i = 0; i < moves.Count; i++)
-			{
-				Move move = moves[i];
-
-				// Make the move on the board
-				UndoInfo undo = board.MakeSearchMove(board, move);
-
-				// Check if opponent's king is in check, opponent defending
-				bool inCheck = IsSquareAttacked(board, GetKingSquare(board, opponent), opponent);
-
-				if (inCheck)
-				{
-					move.AddMoveFlag(MoveFlags.Check);
-
-					// Generate opponent's legal moves after this move
-					List<Move> opponentMoves = FilteredLegalWithoutFlag(board, opponent);
-
-					if (opponentMoves.Count == 0)
-					{ 
-						// No legal moves for opponent and they are in check -> checkmate
-						move.AddMoveFlag(MoveFlags.Checkmate);
-					}
-				}
-
-				// Undo the move to restore board state
-				board.UnmakeMove(move, undo);
-
-				// Update the move in the list with the new flags
-				moves[i] = move;
-			}
-		}
-		private static void GenSemiLegal(Board board, List<Move> moves, bool isWhite)
-		{
-			PieceMoves.GenerateKingMoves(board, moves, isWhite);
-			PieceMoves.GenerateKnightMoves(board, moves, isWhite);
-			PieceMoves.GenerateSliderMoves(board, moves, isWhite);
-			PieceMoves.GeneratePawnMoves(board, moves, isWhite);
-			GenerateCastles(board, moves, isWhite);
-		}
-		
-		public static List<Move> FilteredLegalMoves(Board board, bool isWhite)
-		{
-			List<Move> moves = [];
-			GenSemiLegal(board, moves, isWhite);
-			FilterMoves(board, moves, isWhite);
-			FlagCheckAndMate(board, moves, isWhite);
-
-			//Console.WriteLine(moves[0]);
-			//Console.WriteLine(moves.Count);
-			return moves;
-		}
-		public static List<Move> FilteredLegalWithoutFlag(Board board, bool isWhite)
-		{
-			List<Move> moves = [];
-			GenSemiLegal(board, moves, isWhite);
-			FilterMoves(board, moves, isWhite);
-			return moves;
-		}
-		private static void FilterMoves(Board board, List<Move> moves, bool isWhite)
-		{
-			if (moves == null || moves.Count == 0)
-				return;
-
-			for (int i = moves.Count - 1; i >= 0; i--)
-			{
-				Move m = moves[i];
-				//if ((int)m.From < 0 || (int)m.From >= 64 || (int)m.To < 0 || (int)m.To >= 64)
-				//{
-				//	Console.WriteLine($"Invalid move index: {m}");
-				//	moves.RemoveAt(i);
-				//	continue;
-				//}
-
-				if (SimMoveCheck(m, board, isWhite))
-					moves.RemoveAt(i);
-			}
-		}
-		private static bool SimMoveCheck(Move move, Board board, bool isWhiteToMove)
-		{
-			// 1) Apply the move
-			UndoInfo undo = board.MakeSearchMove(board, move);
-
-			// 2) Find the king‐square of the side that *JUST MOVED*
-			//    (isWhiteToMove == true means White just moved, so check White's king;
-			//     isWhiteToMove == false means Black just moved, so check Black's king).
-			int kingIdx = GetKingSquare(board, isWhiteToMove);
-
-			// 3) Now ask: “Is that king under attack by the *other* color?”
-			//    Because the defender’s color is exactly isWhiteToMove.
-			bool inCheck = IsSquareAttacked(
-				board,
-				kingIdx,
-				/*isDefenderWhite=*/ isWhiteToMove
-			);
-
-			// 4) Undo and return
-			board.UnmakeMove(move, undo);
-			return inCheck;
-		}
-		/* Board visualization
-		 
-		A  B  C  D  E  F  G  H 
-
-		0  1  2  3  4  5  6  7    1
-		8  9  10 11 12 13 14 15   2
-		16 17 18 19 20 21 22 23   3
-		24 25 26 27 28 29 30 31   4
-		32 33 34 35 36 37 38 39   5
-		40 41 42 43 44 45 46 47   6
-		48 49 50 51 52 53 54 55   7
-		56 57 58 59 60 61 62 63   8
-
-		*/
-		public static bool IsInCheck(Board board, bool isWhiteDefend)
-		{
-			int kingIdx = GetKingSquare(board, isWhiteDefend);
-			return IsSquareAttacked(board, kingIdx, isWhiteDefend);
-		}
-		public static List<Move> GenerateCaptureMoves(Board board, bool isWhite)
-		{
-            if (IsInCheck(board, isWhite))
-            {
-                // return every legal move that gets out of check:
-                return MoveGen.FilteredLegalMoves(board, isWhite);
-            }
-            var moves = new List<Move>();
-
-			ulong enemyOcc = board.occupancies[isWhite ? (int)Color.Black : (int)Color.White];
-            ulong occ = board.occupancies[2] & ~board.bitboards[isWhite ? 11 : 5];
-            enemyOcc &= ~board.bitboards[isWhite? 11 : 5];
-
-			// --- 1) Pawn captures (incl. promotions and en-passant) ---
-			if (isWhite)
-			{
-				ulong pawns = board.bitboards[(int)Piece.WhitePawn];
-				// left captures ( sq -> sq+7 )
-				ulong leftCaps = (pawns & ~FileA) << 7 & enemyOcc;
-				// right captures ( sq -> sq+9 )
-				ulong rightCaps = (pawns & ~FileH) << 9 & enemyOcc;
-
-				// promotions on 7th rank:
-				ulong promoLeft = leftCaps & Rank8;
-				ulong promoRight = rightCaps & Rank8;
-				// normal captures:
-				ulong normalLeft = leftCaps & ~Rank8;
-				ulong normalRight = rightCaps & ~Rank8;
-
-				// add promotions captures
-				foreach (var to in BitIter(promoLeft))
-					foreach (var promo in new[] { Piece.WhiteQueen, Piece.WhiteRook, Piece.WhiteBishop, Piece.WhiteKnight })
-						moves.Add(new Move((Square)(to - 7), (Square)to, Piece.WhitePawn,
-										  FindCapturedPiece(board, (Square)to, true),
-										  MoveFlags.Promotion | MoveFlags.Capture, promo));
-
-				foreach (var to in BitIter(promoRight))
-					foreach (var promo in new[] { Piece.WhiteQueen, Piece.WhiteRook, Piece.WhiteBishop, Piece.WhiteKnight })
-						moves.Add(new Move((Square)(to - 9), (Square)to, Piece.WhitePawn,
-										  FindCapturedPiece(board, (Square)to, true),
-										  MoveFlags.Promotion | MoveFlags.Capture, promo));
-
-				// add normal pawn captures
-				foreach (var to in BitIter(normalLeft))
-					moves.Add(new Move((Square)(to - 7), (Square)to, Piece.WhitePawn,
-									   FindCapturedPiece(board, (Square)to, true),
-									   MoveFlags.Capture));
-				foreach (var to in BitIter(normalRight))
-					moves.Add(new Move((Square)(to - 9), (Square)to, Piece.WhitePawn,
-									   FindCapturedPiece(board, (Square)to, true),
-									   MoveFlags.Capture));
-
-				// en-passant
-				if (board.enPassantSquare != Square.None)
-				{
-					int epsq = (int)board.enPassantSquare; // pawn's landing square (e.g., e5 for black)
-					int epCaptureSquare = epsq;        // square behind black pawn (for white capture)
-
-					ulong epCaptureBit = 1UL << epCaptureSquare;
-
-					// pawns that can capture to epCaptureSquare must be on rank 5 (the rank behind epCaptureSquare)
-					// And must be adjacent files to epCaptureSquare
-
-					// Pawns on epCaptureSquare - 1 (left) or +1 (right) file, on rank 5
-					ulong epSources = (pawns & Rank5) & (
-										((epCaptureBit >> 1) & ~FileH) |   // left pawn
-										((epCaptureBit << 1) & ~FileA)     // right pawn
-									  );
-
-					foreach (var from in BitIter(epSources))
-						moves.Add(new Move((Square)from, (Square)epCaptureSquare, Piece.WhitePawn, Piece.BlackPawn, MoveFlags.EnPassant));
-				}
-			}
-			else
-			{
-				// mirror for Black pawns
-				ulong pawns = board.bitboards[(int)Piece.BlackPawn];
-				ulong leftCaps = (pawns & ~FileH) >> 7 & enemyOcc;
-				ulong rightCaps = (pawns & ~FileA) >> 9 & enemyOcc;
-
-				ulong promoLeft = leftCaps & Rank1;
-				ulong promoRight = rightCaps & Rank1;
-				ulong normalLeft = leftCaps & ~Rank1;
-				ulong normalRight = rightCaps & ~Rank1;
-
-				foreach (var to in BitIter(promoLeft))
-					foreach (var promo in new[] { Piece.BlackQueen, Piece.BlackRook, Piece.BlackBishop, Piece.BlackKnight })
-						moves.Add(new Move((Square)(to + 7), (Square)to, Piece.BlackPawn,
-										   FindCapturedPiece(board, (Square)to, false),
-										   MoveFlags.Promotion | MoveFlags.Capture, promo));
-				foreach (var to in BitIter(promoRight))
-					foreach (var promo in new[] { Piece.BlackQueen, Piece.BlackRook, Piece.BlackBishop, Piece.BlackKnight })
-						moves.Add(new Move((Square)(to + 9), (Square)to, Piece.BlackPawn,
-										   FindCapturedPiece(board, (Square)to, false),
-										   MoveFlags.Promotion | MoveFlags.Capture, promo));
-				foreach (var to in BitIter(normalLeft))
-					moves.Add(new Move((Square)(to + 7), (Square)to, Piece.BlackPawn,
-									   FindCapturedPiece(board, (Square)to, false),
-									   MoveFlags.Capture));
-				foreach (var to in BitIter(normalRight))
-					moves.Add(new Move((Square)(to + 9), (Square)to, Piece.BlackPawn,
-									   FindCapturedPiece(board, (Square)to, false),
-									   MoveFlags.Capture));
-				if (board.enPassantSquare != Square.None)
-				{
-					int epsq = (int)board.enPassantSquare; // pawn's landing square (e.g., e4 for white)
-					int epCaptureSquare = epsq;        // square behind white pawn (for black capture)
-
-					ulong epCaptureBit = 1UL << epCaptureSquare;
-
-					// pawns that can capture to epCaptureSquare must be on rank 4
-					// And must be adjacent files to epCaptureSquare
-
-					ulong epSources = (pawns & Rank4) & (
-										((epCaptureBit >> 1) & ~FileH) |
-										((epCaptureBit << 1) & ~FileA)
-									  );
-
-					foreach (var from in BitIter(epSources))
-						moves.Add(new Move((Square)from, (Square)epCaptureSquare, Piece.BlackPawn, Piece.WhitePawn, MoveFlags.EnPassant));
-				}
-			}
-
-			// --- 2) Knight captures ---
-			ulong knights = board.bitboards[(int)(isWhite ? Piece.WhiteKnight : Piece.BlackKnight)];
-			while (knights != 0)
-			{
-				int from = BitOperations.TrailingZeroCount(knights);
-				knights &= knights - 1;
-				ulong attacks = MoveTables.KnightMoves[from] & enemyOcc;
-				foreach (var to in BitIter(attacks))
-					moves.Add(new Move((Square)from, (Square)to,
-							   isWhite ? Piece.WhiteKnight : Piece.BlackKnight,
-							   FindCapturedPiece(board, (Square)to, isWhite),
-							   MoveFlags.Capture));
-			}
-
-			// --- 3) King captures ---
-			ulong king = board.bitboards[(int)(isWhite ? Piece.WhiteKing : Piece.BlackKing)];
-			int kfrom = BitOperations.TrailingZeroCount(king);
-			ulong kAttacks = MoveTables.KingMoves[kfrom] & enemyOcc;
-			foreach (var to in BitIter(kAttacks))
-				moves.Add(new Move((Square)kfrom, (Square)to,
-						   isWhite ? Piece.WhiteKing : Piece.BlackKing,
-						   FindCapturedPiece(board, (Square)to, isWhite),
-						   MoveFlags.Capture));
-
-			// --- 4) Bishop & Queen diagonal captures ---
-			ulong bishops = board.bitboards[(int)(isWhite ? Piece.WhiteBishop : Piece.BlackBishop)];
-			ulong queens = board.bitboards[(int)(isWhite ? Piece.WhiteQueen : Piece.BlackQueen)];
-			ulong diagSliders = bishops | queens;
-			while (diagSliders != 0)
-			{
-				int from = BitOperations.TrailingZeroCount(diagSliders);
-				diagSliders &= diagSliders - 1;
-				ulong attacks = Magics.GetBishopAttacks(from, occ) & enemyOcc;
-				foreach (var to in BitIter(attacks))
-					moves.Add(new Move((Square)from, (Square)to,
-							   ((1UL << from) & bishops) != 0
-								 ? (isWhite ? Piece.WhiteBishop : Piece.BlackBishop)
-								 : (isWhite ? Piece.WhiteQueen : Piece.BlackQueen),
-							   FindCapturedPiece(board, (Square)to, isWhite),
-							   MoveFlags.Capture));
-			}
-
-			// --- 5) Rook & Queen orthogonal captures ---
-			ulong rooks = board.bitboards[(int)(isWhite ? Piece.WhiteRook : Piece.BlackRook)];
-			queens = board.bitboards[(int)(isWhite ? Piece.WhiteQueen : Piece.BlackQueen)];
-			ulong orthoSliders = rooks | queens;
-			while (orthoSliders != 0)
-			{
-				int from = BitOperations.TrailingZeroCount(orthoSliders);
-				orthoSliders &= orthoSliders - 1;
-				ulong attacks = Magics.GetRookAttacks(from, occ) & enemyOcc;
-				foreach (var to in BitIter(attacks))
-					moves.Add(new Move((Square)from, (Square)to,
-							   ((1UL << from) & rooks) != 0
-								 ? (isWhite ? Piece.WhiteRook : Piece.BlackRook)
-								 : (isWhite ? Piece.WhiteQueen : Piece.BlackQueen),
-							   FindCapturedPiece(board, (Square)to, isWhite),
-							   MoveFlags.Capture));
-			}
-
-			return moves;
-		}
-        public static List<Move> GeneratePromotionMoves(Board board, bool isWhite)
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void FlagCheckAndMate(Board board, Span<Move> moves, int count, bool isWhiteToMove)
         {
-            var moves = new List<Move>();
-            ulong pawns = board.bitboards[isWhite ? (int)Piece.WhitePawn : (int)Piece.BlackPawn];
-            ulong occ = board.occupancies[2];
-            ulong enemyOcc = board.occupancies[isWhite ? (int)Color.Black : (int)Color.White];
+            
+            bool opponent = !isWhiteToMove;
 
-            // Promotion ranks
-            ulong promoRank = isWhite ? Rank8 : Rank1;
-            int forward = isWhite ? 8 : -8;
-            int left = isWhite ? 7 : -9;
-            int right = isWhite ? 9 : -7;
-
-            // Promotion piece types
-            Piece[] promoPieces = isWhite
-                ? new[] { Piece.WhiteQueen, Piece.WhiteRook, Piece.WhiteBishop, Piece.WhiteKnight }
-                : new[] { Piece.BlackQueen, Piece.BlackRook, Piece.BlackBishop, Piece.BlackKnight };
-
-            // 1. Quiet promotions (no capture)
-            ulong quietPromos = ((isWhite ? pawns << 8 : pawns >> 8) & promoRank) & ~occ;
-            foreach (var to in BitIter(quietPromos))
+            for (int i = 0; i < count; i++)
             {
-                Square from = (Square)(to - forward);
-                Square toSq = (Square)to;
-                foreach (var promo in promoPieces)
-                {
-                    var move = new Move(from, toSq, isWhite ? Piece.WhitePawn : Piece.BlackPawn, Piece.None, MoveFlags.Promotion, promo);
-                    // Filter: only add if king is not in check after move
-                    UndoInfo undo = board.MakeSearchMove(board, move);
-                    bool inCheck = IsInCheck(board, isWhite);
-                    board.UnmakeMove(move, undo);
-                    if (!inCheck)
-                        moves.Add(move);
-                }
-            }
-            enemyOcc &= ~board.bitboards[isWhite ? (int)Piece.BlackKing : (int)Piece.WhiteKing];
-            // 2. Capture promotions (left and right)
-            // Left capture
-            ulong leftCaps = (isWhite ? (pawns & ~FileA) << 7 : (pawns & ~FileH) >> 9) & promoRank & enemyOcc;
-            foreach (var to in BitIter(leftCaps))
-            {
-                Square from = (Square)(to - left);
-                Square toSq = (Square)to;
-                Piece captured = FindCapturedPiece(board, toSq, isWhite);
-                // Prevent capturing a king
-                if (captured == Piece.WhiteKing || captured == Piece.BlackKing)
-                    continue;
-                foreach (var promo in promoPieces)
-                {
-                    var move = new Move(from, toSq, isWhite ? Piece.WhitePawn : Piece.BlackPawn, captured, MoveFlags.Promotion | MoveFlags.Capture, promo);
-                    UndoInfo undo = board.MakeSearchMove(board, move);
-                    bool inCheck = IsInCheck(board, isWhite);
-                    board.UnmakeMove(move, undo);
-                    if (!inCheck)
-                        moves.Add(move);
-                }
-            }
-            // Right capture
-            ulong rightCaps = (isWhite ? (pawns & ~FileH) << 9 : (pawns & ~FileA) >> 7) & promoRank & enemyOcc;
-            foreach (var to in BitIter(rightCaps))
-            {
-                Square from = (Square)(to - right);
-                Square toSq = (Square)to;
-                Piece captured = FindCapturedPiece(board, toSq, isWhite);
-                // Prevent capturing a king
-                if (captured == Piece.WhiteKing || captured == Piece.BlackKing)
-                    continue;
-                foreach (var promo in promoPieces)
-                {
-                    var move = new Move(from, toSq, isWhite ? Piece.WhitePawn : Piece.BlackPawn, captured, MoveFlags.Promotion | MoveFlags.Capture, promo);
-                    UndoInfo undo = board.MakeSearchMove(board, move);
-                    bool inCheck = IsInCheck(board, isWhite);
-                    board.UnmakeMove(move, undo);
-                    if (!inCheck)
-                        moves.Add(move);
-                }
-            }
+                UndoInfo undo = board.MakeSearchMove(board, moves[i]);
 
-            return moves;
+                bool inCheck = IsSquareAttacked(board, GetKingSquare(board, opponent), opponent);
+
+                if (inCheck)
+                {
+                    moves[i].AddMoveFlag(MoveFlags.Check);
+                    RunMateCheck(board, opponent, moves[i]);
+                }
+                board.UnmakeMove(moves[i], undo);
+            }
         }
-        // helper: iterate over set bits in a bitboard
-        private static IEnumerable<int> BitIter(ulong bb)
-		{
-			while (bb != 0)
-			{
-				int i = BitOperations.TrailingZeroCount(bb);
-				yield return i;
-				bb &= bb - 1;
-			}
-		}
+        
+        public static void FlagCheckOnly(Board board, Span<Move> moves, int count, bool isWhiteToMove)
+        {
 
-		public static int GetKingSquare(Board board, bool isWhite)
-		{
-			// pick the appropriate bitboard
-			ulong kingBB = isWhite
-				? board.bitboards[(int)Piece.WhiteKing]
-				: board.bitboards[(int)Piece.BlackKing];
+            bool opponent = !isWhiteToMove;
 
-			// TrailingZeroCount gives you the index (0–63) of the least significant 1-bit
-			return BitOperations.TrailingZeroCount(kingBB);
-		}
+            for (int i = 0; i < count; i++)
+            {
+                UndoInfo undo = board.MakeSearchMove(board, moves[i]);
 
-		// ─── file-rank‐masks ──────────────────────────────────────────────────────
-		private const ulong FileA = 0x0101010101010101UL;
-		private const ulong FileH = 0x8080808080808080UL;
-		private const ulong Rank1 = 0x00000000000000FFUL;
-		private const ulong Rank8 = 0xFF00000000000000UL;
-        private const ulong Rank4 = 0x00000000FF000000; 
-        private const ulong Rank5 = 0x000000FF00000000; 
+                bool inCheck = IsSquareAttacked(board, GetKingSquare(board, opponent), opponent);
 
-        // ─── initialization ──────────────────────────────────────────────────
+                if (inCheck)
+                {
+                    moves[i].AddMoveFlag(MoveFlags.Check);
+                }
+                board.UnmakeMove(moves[i], undo);
+            }
+        }
+
+        public static void RunMateCheck(Board board, bool oppIsWhite, Move move)
+        {
+            bool isDoubleCheck = IsDoubleCheck(board, oppIsWhite, out int atkerSq, out Piece attackerPiece);
+
+            if (IsEscapePossible(board, oppIsWhite)) return;
+
+            if (!isDoubleCheck)
+            {
+                // If it's a double check, we can't block or capture the attacker, if not, can block or capture
+                // Checks if the attacker can be blocked
+
+                if(CanCaptureCheckingPiece(board, oppIsWhite, atkerSq)) return;
+
+                if ((int)attackerPiece % 6 >= 2) { 
+                    if (CanBlockCheck(board, oppIsWhite, atkerSq)) return;
+                }
+            }
+            
+            move.AddMoveFlag(MoveFlags.Checkmate);
+        }
+        public static bool IsMateCheck(Board board, bool oppIsWhite)
+        {
+            bool isDoubleCheck = IsDoubleCheck(board, oppIsWhite, out int atkerSq, out Piece attackerPiece);
+
+            if (IsEscapePossible(board, oppIsWhite)) return false;
+
+            if (!isDoubleCheck)
+            {
+                // If it's a double check, we can't block or capture the attacker, if not, can block or capture
+                // Checks if the attacker can be blocked
+
+                if (CanCaptureCheckingPiece(board, oppIsWhite, atkerSq)) return false;
+
+                if ((int)attackerPiece % 6 >= 2)
+                {
+                    if (CanBlockCheck(board, oppIsWhite, atkerSq)) return false;
+                }
+            }
+            return true;
+        }
+
+        public static bool IsDoubleCheck(
+            Board board,
+            bool isWhiteDefend,
+            out int atkerSq,
+            out Piece attackerPiece)
+        {
+            atkerSq = -1;
+            attackerPiece = Piece.None;
+            int attackerCount = 0;
+
+            // 1) King square
+            int kingSq = MoveGen.GetKingSquare(board, isWhiteDefend);
+            ulong occ = board.occupancies[2];
+
+            // 2) Pawn attacks
+            if (isWhiteDefend)
+            {
+                int sq1 = kingSq + 7, sq2 = kingSq + 9;
+                if (sq1 < 64 && kingSq % 8 < 7 &&
+                    (board.bitboards[(int)Piece.BlackPawn] & (1UL << sq1)) != 0)
+                {
+                    atkerSq = sq1;
+                    attackerPiece = Piece.BlackPawn;
+                    if (++attackerCount > 1) return true;
+                }
+                if (sq2 < 64 && kingSq % 8 > 0 &&
+                    (board.bitboards[(int)Piece.BlackPawn] & (1UL << sq2)) != 0)
+                {
+                    atkerSq = sq2;
+                    attackerPiece = Piece.BlackPawn;
+                    if (++attackerCount > 1) return true;
+                }
+            }
+            else
+            {
+                int sq1 = kingSq - 7, sq2 = kingSq - 9;
+                if (sq1 >= 0 && kingSq % 8 > 0 &&
+                    (board.bitboards[(int)Piece.WhitePawn] & (1UL << sq1)) != 0)
+                {
+                    atkerSq = sq1;
+                    attackerPiece = Piece.WhitePawn;
+                    if (++attackerCount > 1) return true;
+                }
+                if (sq2 >= 0 && kingSq % 8 < 7 &&
+                    (board.bitboards[(int)Piece.WhitePawn] & (1UL << sq2)) != 0)
+                {
+                    atkerSq = sq2;
+                    attackerPiece = Piece.WhitePawn;
+                    if (++attackerCount > 1) return true;
+                }
+            }
+
+            // 3) Knight attacks
+            ulong knights = isWhiteDefend
+                ? board.bitboards[(int)Piece.BlackKnight]
+                : board.bitboards[(int)Piece.WhiteKnight];
+            ulong knightHits = knights & MoveTables.KnightMoves[kingSq];
+            while (knightHits != 0)
+            {
+                int sq = BitOperations.TrailingZeroCount(knightHits);
+                knightHits &= knightHits - 1;
+
+                atkerSq = sq;
+                attackerPiece = isWhiteDefend ? Piece.BlackKnight : Piece.WhiteKnight;
+                if (++attackerCount > 1) return true;
+            }
+
+            // 4) Rook/Queen attacks
+            ulong rqBB = isWhiteDefend
+                ? board.bitboards[(int)Piece.BlackRook] | board.bitboards[(int)Piece.BlackQueen]
+                : board.bitboards[(int)Piece.WhiteRook] | board.bitboards[(int)Piece.WhiteQueen];
+            ulong rookHits = Magics.GetRookAttacks(kingSq, occ) & rqBB;
+            while (rookHits != 0)
+            {
+                int sq = BitOperations.TrailingZeroCount(rookHits);
+                rookHits &= rookHits - 1;
+
+                atkerSq = sq;
+                attackerPiece = FindPieceAt(board, sq);
+                if (++attackerCount > 1) return true;
+            }
+
+            // 5) Bishop/Queen attacks
+            ulong bqBB = isWhiteDefend
+                ? board.bitboards[(int)Piece.BlackBishop] | board.bitboards[(int)Piece.BlackQueen]
+                : board.bitboards[(int)Piece.WhiteBishop] | board.bitboards[(int)Piece.WhiteQueen];
+            ulong bishopHits = Magics.GetBishopAttacks(kingSq, occ) & bqBB;
+            while (bishopHits != 0)
+            {
+                int sq = BitOperations.TrailingZeroCount(bishopHits);
+                bishopHits &= bishopHits - 1;
+
+                atkerSq = sq;
+                attackerPiece = FindPieceAt(board, sq);
+                if (++attackerCount > 1) return true;
+            }
+
+            // 0 or 1 attacker
+            return false;
+        }
+
+
+        public static bool IsEscapePossible(Board board, bool isWhiteToMove)
+        {
+            int kingSquare = GetKingSquare(board, isWhiteToMove);
+            ulong kingMoves = MoveTables.KingMoves[kingSquare];
+
+            // Friendly occupancy
+            ulong friendlyPieces = isWhiteToMove
+                ? board.occupancies[0]  // White pieces
+                : board.occupancies[1]; // Black pieces
+
+            // Valid escape targets = empty or enemy squares
+            ulong possibleEscapes = kingMoves & ~friendlyPieces;
+
+            while (possibleEscapes != 0)
+            {
+                int targetSquare = BitOperations.TrailingZeroCount(possibleEscapes);
+                possibleEscapes &= possibleEscapes - 1;
+
+                // We are checking if after moving to targetSquare, the king would still be under attack
+                if (!IsSquareAttacked(board, targetSquare, isWhiteToMove))
+                    return true; // Legal escape found
+            }
+
+            return false; // No legal escape
+        }
+
+        public static bool CanCaptureCheckingPiece(Board board, bool isWhiteToMove, int square)
+        {
+            ulong occ = board.occupancies[2];
+
+            // Pawn captures (note: capture direction is *opposite* of pawn push)
+            if (isWhiteToMove)
+            {
+                // White pawns capture up-left and up-right
+                if (square - 7 >= 0 && square % 8 > 0 &&
+                    ((board.bitboards[(int)Piece.WhitePawn] & (1UL << (square - 7))) != 0))
+                    return true;
+                if (square - 9 >= 0 && square % 8 < 7 &&
+                    ((board.bitboards[(int)Piece.WhitePawn] & (1UL << (square - 9))) != 0))
+                    return true;
+            }
+            else
+            {
+                // Black pawns capture down-left and down-right
+                if (square + 7 < 64 && square % 8 < 7 &&
+                    ((board.bitboards[(int)Piece.BlackPawn] & (1UL << (square + 7))) != 0))
+                    return true;
+                if (square + 9 < 64 && square % 8 > 0 &&
+                    ((board.bitboards[(int)Piece.BlackPawn] & (1UL << (square + 9))) != 0))
+                    return true;
+            }
+
+            // Knights
+            ulong knights = isWhiteToMove
+                ? board.bitboards[(int)Piece.WhiteKnight]
+                : board.bitboards[(int)Piece.BlackKnight];
+            if ((knights & MoveTables.KnightMoves[square]) != 0)
+                return true;
+
+            // Rooks and Queens (rook-like movement)
+            ulong rq = isWhiteToMove
+                ? board.bitboards[(int)Piece.WhiteRook] | board.bitboards[(int)Piece.WhiteQueen]
+                : board.bitboards[(int)Piece.BlackRook] | board.bitboards[(int)Piece.BlackQueen];
+            if ((Magics.GetRookAttacks(square, occ) & rq) != 0)
+                return true;
+
+            // Bishops and Queens (bishop-like movement)
+            ulong bq = isWhiteToMove
+                ? board.bitboards[(int)Piece.WhiteBishop] | board.bitboards[(int)Piece.WhiteQueen]
+                : board.bitboards[(int)Piece.BlackBishop] | board.bitboards[(int)Piece.BlackQueen];
+            if ((Magics.GetBishopAttacks(square, occ) & bq) != 0)
+                return true;
+
+            return false;
+        }
+
+        public static bool IsSquareBlockable(Board board, bool isWhiteToMove, int square)
+        {
+            // occupancy of all pieces
+            ulong occ = board.occupancies[2];
+
+            // 1) Pawn pushes
+            if (isWhiteToMove)
+            {
+                // Single push from square-8
+                int from1 = square - 8;
+                if (from1 >= 0 &&
+                    (board.bitboards[(int)Piece.WhitePawn] & (1UL << from1)) != 0 &&
+                    ((occ & (1UL << square)) == 0))
+                {
+                    return true;
+                }
+
+                // Double push from square-16 (only if on 4th rank = squares 32..39)
+                int from2 = square - 16;
+                if (square >= 32 && square <= 39 &&
+                    from2 >= 0 &&
+                    (board.bitboards[(int)Piece.WhitePawn] & (1UL << from2)) != 0 &&
+                    // intermediate square must be empty
+                    ((occ & (1UL << from1)) == 0) &&
+                    ((occ & (1UL << square)) == 0))
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                // Single push from square+8
+                int from1 = square + 8;
+                if (from1 < 64 &&
+                    (board.bitboards[(int)Piece.BlackPawn] & (1UL << from1)) != 0 &&
+                    ((occ & (1UL << square)) == 0))
+                {
+                    return true;
+                }
+
+                // Double push from square+16 (only if on 5th rank = squares 24..31)
+                int from2 = square + 16;
+                if (square >= 24 && square <= 31 &&
+                    from2 < 64 &&
+                    (board.bitboards[(int)Piece.BlackPawn] & (1UL << from2)) != 0 &&
+                    // intermediate square empty
+                    ((occ & (1UL << from1)) == 0) &&
+                    ((occ & (1UL << square)) == 0))
+                {
+                    return true;
+                }
+            }
+
+            // 2) Knight hops
+            ulong knights = isWhiteToMove
+                ? board.bitboards[(int)Piece.WhiteKnight]
+                : board.bitboards[(int)Piece.BlackKnight];
+            if ((knights & MoveTables.KnightMoves[square]) != 0)
+                return true;
+
+            //king can't block
+
+            // 4) Rook/Queen sliding (orthogonal)
+            ulong rq = isWhiteToMove
+                ? board.bitboards[(int)Piece.WhiteRook] | board.bitboards[(int)Piece.WhiteQueen]
+                : board.bitboards[(int)Piece.BlackRook] | board.bitboards[(int)Piece.BlackQueen];
+            if ((Magics.GetRookAttacks(square, occ) & rq) != 0)
+                return true;
+
+            // 5) Bishop/Queen sliding (diagonal)
+            ulong bq = isWhiteToMove
+                ? board.bitboards[(int)Piece.WhiteBishop] | board.bitboards[(int)Piece.WhiteQueen]
+                : board.bitboards[(int)Piece.BlackBishop] | board.bitboards[(int)Piece.BlackQueen];
+            if ((Magics.GetBishopAttacks(square, occ) & bq) != 0)
+                return true;
+
+            // No friendly move reaches that square
+            return false;
+        }
+
+        public static bool CanBlockCheck(
+            Board board,
+            bool isWhiteDefend,
+            int attackerSq)
+        {
+            int kingSq = MoveGen.GetKingSquare(board, isWhiteDefend);
+
+            // Compute file/rank differences
+            int fromRank = attackerSq >> 3, fromFile = attackerSq & 7;
+            int toRank = kingSq >> 3, toFile = kingSq & 7;
+
+            int dr = Math.Sign(toRank - fromRank);
+            int df = Math.Sign(toFile - fromFile);
+
+            // If not perfectly aligned on rank, file or diagonal, no interpose possible
+            if (dr != 0 && df != 0 && Math.Abs(toRank - fromRank) != Math.Abs(toFile - fromFile))
+                return false;
+
+            // step offset: ±8 for file, ±1 for rank, ±9/±7 for diagonals
+            int step = dr * 8 + df;
+
+            // Walk from attacker toward the king, one square at a time
+            int sq = attackerSq + step;
+            while (sq != kingSq)
+            {
+                // If any piece can legally move (non‐capture) to `sq`, we can block
+                if (IsSquareBlockable(board, !isWhiteDefend, sq))
+                    return true;
+
+                sq += step;
+            }
+
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void GenSemiLegal(Board board, Span<Move> moves, ref int count, bool isWhite)
+        {
+            PieceMoves.GenerateKingMoves(board, moves, ref count, isWhite);
+            PieceMoves.GenerateKnightMoves(board, moves, ref count, isWhite);
+            PieceMoves.GenerateSliderMoves(board, moves, ref count, isWhite);
+            PieceMoves.GeneratePawnMoves(board, moves, ref count, isWhite);
+            GenerateCastles(board, moves, ref count, isWhite);
+        }
+
+
+        private static readonly Move[] _moveBuffer = new Move[256];
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void FilteredLegalMoves(Board board, Span<Move> result, ref int count, bool isWhite)
+        {
+            Span<Move> tmp = stackalloc Move[256];
+            int tmpCount = 0;
+
+            GenSemiLegal(board, tmp, ref tmpCount, isWhite);
+            FilterMoves(board, tmp, ref tmpCount, isWhite);
+            FlagCheckAndMate(board, tmp, tmpCount, isWhite);
+
+            for (int i = 0; i < tmpCount; i++)
+                result[count++] = tmp[i];
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void FilteredLegalWithoutFlag(Board board, Span<Move> result, ref int count, bool isWhite)
+        {
+            Span<Move> tmp = stackalloc Move[256];
+            int tmpCount = 0;
+
+            GenSemiLegal(board, tmp, ref tmpCount, isWhite);
+            FilterMoves(board, tmp, ref tmpCount, isWhite);
+
+            for (int i = 0; i < tmpCount; i++)
+                result[count++] = tmp[i];
+        }
+
+        private static void FilterMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
+        {
+            int legalCount = 0;
+
+            for (int i = 0; i < count; i++)
+            {
+                Move move = moves[i];
+                if (!SimMoveCheck(move, board, isWhite))
+                {
+                    moves[legalCount++] = move;
+                }
+            }
+
+            count = legalCount;
+        }
+
+        // Enumerate set bits in bitboard as squares
+        private static IEnumerable<int> BitboardSquares(ulong bb)
+        {
+            while (bb != 0)
+            {
+                int sq = BitOperations.TrailingZeroCount(bb);
+                yield return sq;
+                bb &= bb - 1;
+            }
+        }
+
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool SimMoveCheck(Move move, Board board, bool isWhiteToMove)
+        {
+            UndoInfo undo = board.MakeSearchMove(board, move);
+            int kingIdx = GetKingSquare(board, isWhiteToMove);
+            bool inCheck = IsSquareAttacked(board, kingIdx, isWhiteToMove);
+            board.UnmakeMove(move, undo);
+            return inCheck;
+        }
+
+        public static bool IsInCheck(Board board, bool isWhiteDefend)
+        {
+            int kingIdx = GetKingSquare(board, isWhiteDefend);
+            return IsSquareAttacked(board, kingIdx, isWhiteDefend);
+        }
+
+        public static int GetKingSquare(Board board, bool isWhite)
+        {
+            ulong kingBB = isWhite
+                ? board.bitboards[(int)Piece.WhiteKing]
+                : board.bitboards[(int)Piece.BlackKing];
+
+            return BitOperations.TrailingZeroCount(kingBB);
+        }
+
+        private const ulong FileA = 0x0101010101010101UL;
+        private const ulong FileH = 0x8080808080808080UL;
+        private const ulong Rank1 = 0x00000000000000FFUL;
+        private const ulong Rank8 = 0xFF00000000000000UL;
+        private const ulong Rank4 = 0x00000000FF000000;
+        private const ulong Rank5 = 0x000000FF00000000;
+
         internal static Piece FindCapturedPiece(Board board, Square sq, bool isWhite)
-		{
-			ulong mask = 1UL << (int)sq;
-			//searches other color for cap piece
-			int start = isWhite ? 6 : 0;
-			int end = isWhite ? 12 : 6;
+        {
+            ulong mask = 1UL << (int)sq;
+            int start = isWhite ? 6 : 0;
+            int end = isWhite ? 12 : 6;
 
-			for (int i = start; i < end; i++)
-			{
-				if ((board.bitboards[i] & mask) != 0)
-					return (Piece)i;
-			}
+            for (int i = start; i < end; i++)
+                if ((board.bitboards[i] & mask) != 0)
+                    return (Piece)i;
 
-			return Piece.None;
-		}
+            return Piece.None;
+        }
+        internal static Piece FindPieceAt(Board board, int sq)
+        {
+            ulong mask = 1UL << (int)sq;
+            
+            for (int i = 0; i < 12; i++)
+                if ((board.bitboards[i] & mask) != 0)
+                    return (Piece)i;
 
-		public static bool IsSquareAttacked(Board board, int square, bool isWhiteDefend)
-		{
-			ulong occ = board.occupancies[2];
+            return Piece.None;
+        }
 
-			// 1) Pawn attacks
-			if (isWhiteDefend)
-			{
-				// Black pawns attack down‐board: from square+7 (NE) and +9 (NW)
-				if (square + 7 < 64 && square % 8 < 7 &&
-				   ((board.bitboards[(int)Piece.BlackPawn] >> (square + 7) & 1UL) != 0))
-					return true;
-				if (square + 9 < 64 && square % 8 > 0 &&
-				   ((board.bitboards[(int)Piece.BlackPawn] >> (square + 9) & 1UL) != 0))
-					return true;
-			}
-			else
-			{
-				// White pawns attack up‐board: from square−7 (SW) and −9 (SE)
-				if (square - 7 >= 0 && square % 8 > 0 &&
-				   ((board.bitboards[(int)Piece.WhitePawn] >> (square - 7) & 1UL) != 0))
-					return true;
-				if (square - 9 >= 0 && square % 8 < 7 &&
-				   ((board.bitboards[(int)Piece.WhitePawn] >> (square - 9) & 1UL) != 0))
-					return true;
-			}
+        public static bool IsSquareAttacked(Board board, int square, bool isWhiteDefend)
+        {
+            ulong occ = board.occupancies[2];
 
-			// 2) Knight attacks
-			ulong knights = isWhiteDefend
-				? board.bitboards[(int)Piece.BlackKnight]
-				: board.bitboards[(int)Piece.WhiteKnight];
-			if ((knights & MoveTables.KnightMoves[square]) != 0)
-				return true;
+            // Pawn attacks
+            if (isWhiteDefend)
+            {
+                // Black pawn attacks white king (from southeast or southwest)
+                if (square % 8 < 7 && square + 7 < 64 &&
+                    (board.bitboards[(int)Piece.BlackPawn] & (1UL << (square + 7))) != 0)
+                    return true;
+                if (square % 8 > 0 && square + 9 < 64 &&
+                    (board.bitboards[(int)Piece.BlackPawn] & (1UL << (square + 9))) != 0)
+                    return true;
+            }
+            else
+            {
+                // White pawn attacks black king (from northwest or northeast)
+                if (square % 8 > 0 && square - 7 >= 0 &&
+                    (board.bitboards[(int)Piece.WhitePawn] & (1UL << (square - 7))) != 0)
+                    return true;
+                if (square % 8 < 7 && square - 9 >= 0 &&
+                    (board.bitboards[(int)Piece.WhitePawn] & (1UL << (square - 9))) != 0)
+                    return true;
+            }
 
-			// 3) King attacks
-			ulong kings = isWhiteDefend
-				? board.bitboards[(int)Piece.BlackKing]
-				: board.bitboards[(int)Piece.WhiteKing];
-			if ((kings & MoveTables.KingMoves[square]) != 0)
-				return true;
+            // Knight attacks
+            ulong knights = isWhiteDefend
+                ? board.bitboards[(int)Piece.BlackKnight]
+                : board.bitboards[(int)Piece.WhiteKnight];
+            if ((knights & MoveTables.KnightMoves[square]) != 0)
+                return true;
 
-			// 4) Rook/Queen rays via magics
-			ulong rq = (isWhiteDefend
-				? board.bitboards[(int)Piece.BlackRook] | board.bitboards[(int)Piece.BlackQueen]
-				: board.bitboards[(int)Piece.WhiteRook] | board.bitboards[(int)Piece.WhiteQueen]);
-			if ((Magics.GetRookAttacks(square, occ) & rq) != 0)
-				return true;
+            // King attacks (relevant for some edge cases outside check detection)
+            ulong kings = isWhiteDefend
+                ? board.bitboards[(int)Piece.BlackKing]
+                : board.bitboards[(int)Piece.WhiteKing];
+            if ((kings & MoveTables.KingMoves[square]) != 0)
+                return true;
 
-			// 5) Bishop/Queen rays via magics
-			ulong bq = (isWhiteDefend
-				? board.bitboards[(int)Piece.BlackBishop] | board.bitboards[(int)Piece.BlackQueen]
-				: board.bitboards[(int)Piece.WhiteBishop] | board.bitboards[(int)Piece.WhiteQueen]);
-			if ((Magics.GetBishopAttacks(square, occ) & bq) != 0)
-				return true;
+            // Rook/Queen attacks
+            ulong rq = isWhiteDefend
+                ? board.bitboards[(int)Piece.BlackRook] | board.bitboards[(int)Piece.BlackQueen]
+                : board.bitboards[(int)Piece.WhiteRook] | board.bitboards[(int)Piece.WhiteQueen];
+            if ((Magics.GetRookAttacks(square, occ) & rq) != 0)
+                return true;
 
-			return false;
-		}
+            // Bishop/Queen attacks
+            ulong bq = isWhiteDefend
+                ? board.bitboards[(int)Piece.BlackBishop] | board.bitboards[(int)Piece.BlackQueen]
+                : board.bitboards[(int)Piece.WhiteBishop] | board.bitboards[(int)Piece.WhiteQueen];
+            if ((Magics.GetBishopAttacks(square, occ) & bq) != 0)
+                return true;
 
-        private static void GenerateCastles(Board board, List<Move> moves, bool isWhite)
+            return false;
+        }
+
+
+        private static void GenerateCastles(Board board, Span<Move> moves, ref int count, bool isWhite)
         {
             int kingFrom = GetKingSquare(board, isWhite);
-
             var rights = board.castlingRights;
             ulong occ = board.occupancies[2];
 
             if (isWhite && kingFrom == (int)Square.E1 && !IsSquareAttacked(board, (int)Square.E1, true))
             {
-                // King-side: e1 → g1
                 if ((rights & Castling.WhiteKing) != 0
                     && ((occ & (1UL << (int)Square.F1)) == 0)
                     && ((occ & (1UL << (int)Square.G1)) == 0)
                     && !IsSquareAttacked(board, (int)Square.F1, true)
                     && !IsSquareAttacked(board, (int)Square.G1, true))
                 {
-                    moves.Add(new Move((Square)kingFrom, Square.G1, Piece.WhiteKing, Piece.None, MoveFlags.Castling));
+                    moves[count++] = new Move((Square)kingFrom, Square.G1, Piece.WhiteKing, Piece.None, MoveFlags.Castling);
                 }
 
-                // Queen-side: e1 → c1
                 if ((rights & Castling.WhiteQueen) != 0
                     && ((occ & (1UL << (int)Square.D1)) == 0)
                     && ((occ & (1UL << (int)Square.C1)) == 0)
@@ -541,22 +602,20 @@ namespace ChessC_
                     && !IsSquareAttacked(board, (int)Square.D1, true)
                     && !IsSquareAttacked(board, (int)Square.C1, true))
                 {
-                    moves.Add(new Move((Square)kingFrom, Square.C1, Piece.WhiteKing, Piece.None, MoveFlags.Castling));
+                    moves[count++] = new Move((Square)kingFrom, Square.C1, Piece.WhiteKing, Piece.None, MoveFlags.Castling);
                 }
             }
             else if (!isWhite && kingFrom == (int)Square.E8 && !IsSquareAttacked(board, (int)Square.E8, false))
             {
-                // King-side: e8 → g8
                 if ((rights & Castling.BlackKing) != 0
                     && ((occ & (1UL << (int)Square.F8)) == 0)
                     && ((occ & (1UL << (int)Square.G8)) == 0)
                     && !IsSquareAttacked(board, (int)Square.F8, false)
                     && !IsSquareAttacked(board, (int)Square.G8, false))
                 {
-                    moves.Add(new Move((Square)kingFrom, Square.G8, Piece.BlackKing, Piece.None, MoveFlags.Castling));
+                    moves[count++] = new Move((Square)kingFrom, Square.G8, Piece.BlackKing, Piece.None, MoveFlags.Castling);
                 }
 
-                // Queen-side: e8 → c8
                 if ((rights & Castling.BlackQueen) != 0
                     && ((occ & (1UL << (int)Square.D8)) == 0)
                     && ((occ & (1UL << (int)Square.C8)) == 0)
@@ -564,7 +623,7 @@ namespace ChessC_
                     && !IsSquareAttacked(board, (int)Square.D8, false)
                     && !IsSquareAttacked(board, (int)Square.C8, false))
                 {
-                    moves.Add(new Move((Square)kingFrom, Square.C8, Piece.BlackKing, Piece.None, MoveFlags.Castling));
+                    moves[count++] = new Move((Square)kingFrom, Square.C8, Piece.BlackKing, Piece.None, MoveFlags.Castling);
                 }
             }
         }

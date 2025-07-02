@@ -1,4 +1,6 @@
 ﻿
+using System.Runtime.CompilerServices;
+
 namespace ChessC_
 {
 	// Helper struct to save board state for undo
@@ -31,7 +33,10 @@ namespace ChessC_
 		public ulong[] bitboards = new ulong[12]; // 6 piece types × 2 colors
 		public ulong[] occupancies = new ulong[3]; // White, Black, Both
 
-		public Color sideToMove;
+        //public int WhiteMaterial;
+        //public int BlackMaterial;
+
+        public Color sideToMove;
 		public Castling castlingRights;
 		public Square enPassantSquare;
 
@@ -44,7 +49,18 @@ namespace ChessC_
 		private Stack<BoardState> history = [];
 
 		// Put in a constructor or reset method
-		public void ComputeInitialZobrist()
+
+        //public void InitMaterials()
+        //{
+        //    WhiteMaterial = 0;
+        //    BlackMaterial = 0;
+        //    // Calculate material values based on piece types
+        //    for (int i = 0; i < 6; i++) // White pieces
+        //        WhiteMaterial += Bitboard.PopCount(bitboards[i]) * Eval.pieceValues[i];
+        //    for (int i = 6; i < 12; i++) // Black pieces
+        //        BlackMaterial += Bitboard.PopCount(bitboards[i]) * Eval.pieceValues[i - 6];
+        //}
+        public void ComputeInitialZobrist()
 		{
 			zobristKey = 0UL;
 			// 1) piece placements
@@ -263,6 +279,7 @@ namespace ChessC_
         }
 
         // Actual logic to mutate bitboards, occupancies, castling, en passant, etc.
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private void ApplyMoveInternal(Move move)
         {
             int fromIdx = (int)move.From;
@@ -381,6 +398,7 @@ namespace ChessC_
                 fullmoveNumber++;
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void UpdateOccupancies()
         {
             // Local variables for speed

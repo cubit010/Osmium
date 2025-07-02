@@ -41,7 +41,7 @@ namespace ChessC_
         /// Call this overload with the full list of legal moves in the position.
         /// It will disambiguate automatically if two (or more) identical pieces can go to move.To.
         /// </summary>
-        public static string ToAlgebraicNotation(Move move, List<Move> legalMoves)
+        public static string ToAlgebraicNotation(Move move, Span<Move> legalMoves)
         {
             // 1) Handle castling
             if ((move.Flags & MoveFlags.Castling) != 0)
@@ -53,7 +53,7 @@ namespace ChessC_
             }
 
             Piece piece = move.PieceMoved;
-            bool isPawn = (piece == Piece.WhitePawn || piece == Piece.BlackPawn);
+            bool isPawn = piece == Piece.WhitePawn || piece == Piece.BlackPawn;
 
             string fromSq = SquareToString(move.From);
             string toSq = SquareToString(move.To);
@@ -66,10 +66,8 @@ namespace ChessC_
 
             if (isPawn)
             {
-                // Pawn moves: exd5 or d5
                 if ((move.Flags & MoveFlags.Capture) != 0)
                 {
-                    // file of origin + 'x' + toSquare
                     char fromFileChar = fromSq[0];
                     return $"{fromFileChar}x{toSq}{promo}{checkOrMate}";
                 }
@@ -80,45 +78,36 @@ namespace ChessC_
             }
             else
             {
-                // Non-pawns: Nf3, Raxd1, etc.
                 char pieceChar = PieceToChar[piece];
-
-                // If there are other same-piece moves that also go to move.To, we must disambiguate.
                 string disamb = "";
-                if (legalMoves != null)
-                {
-                    // Find all other moves in legalMoves that:
-                    //   1) move the same piece type (e.g. WhiteKnight),
-                    //   2) have different 'From', but same 'To'
-                    var ambiguous = legalMoves
-                        .Where(m =>
-                            m.PieceMoved == move.PieceMoved &&
-                            m.To == move.To &&
-                            m.From != move.From)
-                        .ToList();
 
-                    if (ambiguous.Count > 0)
+                // Disambiguation: scan span
+                for (int i = 0; i < legalMoves.Length; i++)
+                {
+                    var m = legalMoves[i];
+                    if (m.Equals(move)) continue;
+                    if (m.PieceMoved == move.PieceMoved && m.To == move.To)
                     {
-                        // Among ambiguous candidates, check if file alone suffices:
-                        bool fileUnique = ambiguous.All(m => ((int)m.From % 8) != ((int)move.From % 8));
+                        // ambiguity exists
+                        bool fileUnique = true;
+                        bool rankUnique = true;
+                        for (int j = 0; j < legalMoves.Length; j++)
+                        {
+                            var o = legalMoves[j];
+                            if (o.Equals(move)) continue;
+                            if (o.PieceMoved == move.PieceMoved && o.To == move.To)
+                            {
+                                if (((int)o.From % 8) == ((int)move.From % 8)) fileUnique = false;
+                                if (((int)o.From / 8) == ((int)move.From / 8)) rankUnique = false;
+                            }
+                        }
                         if (fileUnique)
-                        {
-                            disamb = $"{(char)('a' + ((int)move.From % 8))}";
-                        }
+                            disamb = ((char)('a' + ((int)move.From % 8))).ToString();
+                        else if (rankUnique)
+                            disamb = (((int)move.From / 8) + 1).ToString();
                         else
-                        {
-                            // If files overlap, check if rank alone suffices:
-                            bool rankUnique = ambiguous.All(m => ((int)m.From / 8) != ((int)move.From / 8));
-                            if (rankUnique)
-                            {
-                                disamb = $"{((int)move.From / 8) + 1}";
-                            }
-                            else
-                            {
-                                // Otherwise, include both file and rank
-                                disamb = $"{(char)('a' + ((int)move.From % 8))}{((int)move.From / 8) + 1}";
-                            }
-                        }
+                            disamb = ((char)('a' + ((int)move.From % 8))).ToString() + (((int)move.From / 8) + 1).ToString();
+                        break;
                     }
                 }
 

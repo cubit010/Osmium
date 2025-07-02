@@ -1,496 +1,353 @@
-﻿using System.Diagnostics;
-using System.Reflection.Metadata;
-
+﻿using System;
+using System.Diagnostics;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace ChessC_
 {
-	public static class Search
-	{
-		public static int MaxDepth = Program.MaxDepth;
-		private const int MateScore = 1_000_000;
-		private static readonly Move[,] killerMoves = new Move[MaxDepth + 1, 2];
-		public static long NodesVisited;
+    /// <summary>
+    /// Span-based search with fixed move-buffer isolation per depth
+    /// </summary>
+    public static class Search
+    {
+        public static int MaxDepth = Program.MaxDepth;
+        private static int MaxQDepth = 8; // Quiescence search max depth
 
-		internal static Move FindBestMoveLazySMP(Board board, TranspositionTable tt, int timeLimitMs, int threadCount)
-		{
-			Console.WriteLine("Lazy SMP search is not implemented yet.");
-			return default; // Placeholder for lazy SMP implementation
-		}
-		
-		internal static Move FindBestMove(Board board, TranspositionTable tt, int timeLimitMs)
-		{
-			Move lastBest = default;
-			int lastScore = 0;
-			var searchStart = Stopwatch.StartNew();
-			
-			int maxDepth = MaxDepth;
-			for (int depth = 1; depth <= maxDepth; depth++)
-			{
-				var iterStart = Stopwatch.StartNew();
+        private const int MateScore = 1_000_000;
+        private static readonly Move[,] killerMoves = new Move[MaxDepth + 1, 2];
+        public static long NodesVisited;
 
-				if (searchStart.ElapsedMilliseconds >= timeLimitMs)
-					break;
-				NodesVisited = 0;
-				// --- Aspiration Window ---
-				int window = 50 + 3*depth; // Tune as needed
-				int alpha = lastScore - window;
-				int beta = lastScore + window;
-				int score;
-				Move bestMove;
+        [ThreadStatic]
+        private static Move[][] _moveBuffer = new Move[MaxDepth][];
 
-				while (true)
-				{
-					bestMove = SearchAtDepth(board, tt, depth, alpha, beta, out score);
+        private static int QBufferDepth = MaxQDepth; // Quiescence search buffer depth
 
-					if (score <= alpha)
-					{
-						// Fail-low, widen window
-						alpha = int.MinValue + 1;
-					}
-					else if (score >= beta)
-					{
-						// Fail-high, widen window
-						beta = int.MaxValue - 1;
-					}
-					else
-					{
-						break; // Score within window
-					}
-				}
+        [ThreadStatic]
+        private static Move[][] _qBuffer = new Move[QBufferDepth][];
 
-				lastScore = score;
-				lastBest = bestMove;
+        internal static Move FindBestMove(Board board, TranspositionTable tt, int timeLimitMs)
+        {
+            Move lastBest = default;
+            int lastScore = 0;
+            var sw = Stopwatch.StartNew();
+            for (int i = 0; i < MaxDepth; i++)
+            {
+                // Ensure each depth has its own move buffer
+                if (_moveBuffer[i] == null || _moveBuffer.Length < 256)
+                    _moveBuffer[i] = new Move[256];
+            }
+            for (int depth = 1; depth <= MaxDepth; depth++)
+            {
+                var iterStart = Stopwatch.StartNew();
+                if (sw.ElapsedMilliseconds >= timeLimitMs)
+                    break;
 
-				iterStart.Stop();
-				Console.WriteLine($"Depth {depth}: Nodes={NodesVisited}, Time={iterStart.ElapsedMilliseconds} ms, Best={lastBest}");
-				
-			}
-			searchStart.Stop(); 
+                NodesVisited = 0;
+                int window = 65 + 3 * depth;
+                int alpha = lastScore - window;
+                int beta = lastScore + window;
+                int score;
+                Move bestMove;
 
-			double outScore = lastScore;
+                // Aspirating window
+                while (true)
+                {
+                    bestMove = SearchAtDepth(board, tt, depth, alpha, beta, out score);
+                    if (score <= alpha)
+                        alpha = int.MinValue + 1;
+                    else if (score >= beta)
+                        beta = int.MaxValue - 1;
+                    else
+                        break;
+                }
 
-			if (board.sideToMove == Color.Black)
-				outScore = -outScore;
+                lastScore = score;
+                lastBest = bestMove;
+                iterStart.Stop();
+                Console.WriteLine($"Depth {depth}: Nodes={NodesVisited}, Time={iterStart.ElapsedMilliseconds} ms, Best={lastBest}");
+            }
 
-			if (Math.Abs(outScore) > 900000)
-			{
-				outScore = Math.Sign(outScore) * ((MateScore - Math.Abs(outScore)) / 2);
-				String mate = outScore > 0 ? "" : "-";
-				mate += "M" + Math.Abs(outScore);
-				Console.WriteLine($"Final evaluation: ({mate})");
-			}
-			else
-			{
-				Console.WriteLine($"Final evaluation: {outScore / 100.0}");
-			}
-			return lastBest;
-		}
+            sw.Stop();
+            // Final output formatting
+            double outScore = board.sideToMove == Color.Black ? -lastScore : lastScore;
+            if (Math.Abs(outScore) > 900000)
+            {
+                outScore = Math.Sign(outScore) * ((MateScore - Math.Abs(outScore)) / 2);
+                Console.WriteLine($"Final evaluation: {(outScore > 0 ? "" : "-")}M{Math.Abs(outScore)}");
+            }
+            else
+            {
+                Console.WriteLine($"Final evaluation: {outScore / 100.0}");
+            }
+            Console.WriteLine($"Reduced: {reduced}, Re-searched: {researched} ({(100.0 * researched / reduced):F2}%)");
+            Console.WriteLine($"Null-window: {nullwindow}, Null-researched: {nullReseached} ({(100.0 * nullReseached / nullwindow):F2}%)");
+            reduced = 0;
+            researched = 0;
+            nullwindow = 0;
+            nullReseached = 0;
+            return lastBest;
+        }
 
-		// Search at a given depth with aspiration window support
-		private static Move SearchAtDepth(Board board, TranspositionTable tt, int targetDepth, int alpha, int beta, out int bestScore)
-		{
-			bool isWhite = board.sideToMove == Color.White;
-			Move bestMove = default;
-			bestScore = int.MinValue;
+        private static Move SearchAtDepth(Board board, TranspositionTable tt, int depth, int alpha, int beta, out int bestScore)
+        {
+            bool isWhite = board.sideToMove == Color.White;
+            bestScore = int.MinValue;
+            Move bestMove = default;
 
-			var moves = MoveGen.FilteredLegalMoves(board, isWhite);
-			tt.Probe(board.zobristKey, targetDepth, alpha, beta, out _, out Move ttMove);
-			moves = MoveOrdering.OrderMoves(board, moves, ttMove, targetDepth);
+            // --- Generate legal moves ---
+            Span<Move> full = new Span<Move>(_moveBuffer[depth-1]);
+            int count = 0;
+            MoveGen.FilteredLegalMoves(board, full, ref count, isWhite);
+            Span<Move> moves = full.Slice(0, count);
 
-			// immediate mate
-			foreach (var mv in moves)
-				if ((mv.Flags & MoveFlags.Checkmate) != 0)
-					return mv;
+            // TT probe and move ordering
+            tt.Probe(board.zobristKey, depth, alpha, beta, out _, out Move ttMove);
+            MoveOrdering.OrderMoves(board, moves, ttMove, depth);
 
-			foreach (var move in moves)
-			{
-				//var beforeBB = (ulong[])board.bitboards.Clone();
-				UndoInfo undo = board.MakeSearchMove(board, move);
-				int score = -PVS(board, targetDepth - 1, -beta, -alpha, !isWhite, tt);
-				board.UnmakeMove(move, undo);
+            // Immediate checkmate
+            foreach (var mv in moves)
+                if ((mv.Flags & MoveFlags.Checkmate) != 0)
+                    return mv;
 
-				// Drift check at root
-				//for (int i = 0; i < 12; i++)
-				//{
-				//    if (board.bitboards[i] != beforeBB[i])
-				//    {
-				//        Console.WriteLine($"*** DRIFT at bitboard[{i}] after path: {string.Join(" -> ", _currentPath.Select(m => MoveNotation.ToAlgebraicNotation(m)))}");
-				//        Console.WriteLine("Before:");
-				//        Utils.PrintBitboard(beforeBB[i]);
-				//        Console.WriteLine("After:");
-				//        Utils.PrintBitboard(board.bitboards[i]);
-				//        Debugger.Break();
-				//        break;
-				//    }
-				//}
+            // Main search
+            foreach (var mv in moves)
+            {
+                var undo = board.MakeSearchMove(board, mv);
+                int score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt);
+                board.UnmakeMove(mv, undo);
 
-				if (score > bestScore)
-				{
-					bestScore = score;
-					bestMove = move;
-				}
-				alpha = Math.Max(alpha, score);
-			}
-			return bestMove;
-		}
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestMove = mv;
+                }
+                alpha = Math.Max(alpha, score);
+                
+            }
 
-		private static bool HasSufficientMaterial(Board board, bool isWhiteToMove)
-		{
-			// Piece indices: 0-5 white (Pawn, Knight, Bishop, Rook, Queen, King), 6-11 black
-			int colorOffset = isWhiteToMove ? 0 : 6;
-			int pawnCount = Bitboard.PopCount(board.bitboards[colorOffset + 0]);
-			int knightCount = Bitboard.PopCount(board.bitboards[colorOffset + 1]);
-			int bishopCount = Bitboard.PopCount(board.bitboards[colorOffset + 2]);
-			int rookCount = Bitboard.PopCount(board.bitboards[colorOffset + 3]);
-			int queenCount = Bitboard.PopCount(board.bitboards[colorOffset + 4]);
+            return bestMove;
+        }
+        public static int reduced = 0;
+        public static int researched = 0;
+        public static int nullwindow = 0;
+        public static int nullReseached = 0;
 
-			// Any pawn, rook, or queen is sufficient
-			if (pawnCount > 0 || rookCount > 0 || queenCount > 0)
-				return true;
+        private static int PVS(Board board, int depth, int alpha, int beta, bool isWhite, TranspositionTable tt)
+        {
+            NodesVisited++;
 
-			// Two bishops is sufficient
-			if (bishopCount >= 2)
-				return true;
+            if (depth == 0)//return Eval.EvalBoard(board, isWhite);
+                return Quiesce(board, alpha, beta, isWhite, 1);
 
-			// Bishop + knight is sufficient
-			if (bishopCount >= 1 && knightCount >= 1)
-				return true;
+            ulong key = board.zobristKey;
+            int origAlpha = alpha;
 
-			// Two knights is not sufficient (mate is not possible without help)
-			// Only king, or king+bishop, or king+knight is not sufficient
-			return false;
-		}
-		//currently broken because of the new nmp, lmr, and futility pruning
+            if (tt.Probe(key, depth, alpha, beta, out int ttScore, out Move ttMove))
+                return ttScore;
 
-		//[ThreadStatic]
-		//private static List<Move> _currentPath;
+            int kingSq = MoveGen.GetKingSquare(board, isWhite);
+            bool inCheck = MoveGen.IsSquareAttacked(board, kingSq, isWhite);
 
-		private static int Negamax(Board board, int depth, int alpha, int beta, bool isWhiteToMove, TranspositionTable tt)
-		{
-			//if (_currentPath == null)
-			//    _currentPath = new List<Move>();
+            // Null move pruning
+            if (depth >= 3 && !inCheck && HasSufficientMaterial(board, isWhite))
+            {
+                var undoNull = board.MakeNullMove();
+                int nullScore = -PVS(board, depth - (3 + depth * 2 / 9), -beta, -beta + 1, !isWhite, tt);
+                board.UnmakeNullMove(undoNull);
+                if (nullScore >= beta)
+                    return beta;
+            }
 
-			NodesVisited++;
-			if (depth == 0)
-			{
-				return Quiesce(board, alpha, beta, isWhiteToMove);
-			}
+            // --- Generate legal moves ---
+            Span<Move> full = new Span<Move>(_moveBuffer[depth - 1]);
+            int count = 0;
+            MoveGen.FilteredLegalWithoutFlag(board, full, ref count, isWhite);
+            if (count == 0)
+                return inCheck ? -MateScore + (MaxDepth - depth) : 0;
+            Span<Move> moves = full.Slice(0, count);
 
-			ulong key = board.zobristKey;
-			int origAlpha = alpha;
-			if (tt.Probe(key, depth, alpha, beta, out int ttScore, out Move ttMove))
-				return ttScore;
+            MoveOrdering.OrderMoves(board, moves, ttMove, depth);
 
-			int kingSq = MoveGen.GetKingSquare(board, isWhiteToMove);
-			bool inCheck = MoveGen.IsSquareAttacked(board, kingSq, isWhiteToMove);
+            int best = int.MinValue;
+            Move bestMove = default;
+            int moveNum = 0;
 
-			// Null Move Pruning 
-			if (depth >= 3 && !inCheck && HasSufficientMaterial(board, isWhiteToMove))
-			{
-				var undoNull = board.MakeNullMove();
-				int nullScore = -Negamax(board, depth - 3, -beta, -beta + 1, !isWhiteToMove, tt);
-				board.UnmakeNullMove(undoNull);
+            foreach (var mv in moves)
+            {
+                moveNum++;
 
-				if (nullScore >= beta)
-					return beta;
-			}
-
-			var moves = MoveGen.FilteredLegalMoves(board, isWhiteToMove);
-			if (moves.Count == 0)
-			{
-				return inCheck ? -MateScore + (MaxDepth - depth) : 0;
-			}
-
-			moves = MoveOrdering.OrderMoves(board, moves, ttMove, depth);
-
-			int bestScore = int.MinValue;
-			Move bestMove = default;
-			int moveCount = 0;
-
-			foreach (var move in moves)
-			{
-				moveCount++;
-
-				//_currentPath.Add(move);
-				//var beforeBB = (ulong[])board.bitboards.Clone();
-
-				// --- Futility Pruning ---
-				// Only at depth 1, not in check, quiet move (no capture, no promotion)
-				if (depth == 1 &&
-					!inCheck &&
-					move.PieceCaptured == Piece.None &&
-					(move.Flags & MoveFlags.Promotion) == 0)
-				{
-					int staticEval = Eval.EvalBoard(board, isWhiteToMove);
-					int futilityMargin = 100; // tuning needed
-					if (staticEval + futilityMargin <= alpha)
-						continue; // Prune this move
-				}
-
-				// --- Late Move Reductions (LMR) ---
-				// Only for quiet moves, not in check, not first few moves, depth >= 3
-				bool canReduce = 
-					depth >= 3 &&
-					moveCount > 3 && 
-					!inCheck && 
-					move.PieceCaptured == Piece.None && 
-					(move.Flags & MoveFlags.Promotion) == 0;
-
-				int score;
-				if (canReduce)
-				{
-					// Reduced-depth search
-					UndoInfo undo = board.MakeSearchMove(board, move);
-					score = -Negamax(board, depth - 2, -beta, -alpha, !isWhiteToMove, tt);
-					board.UnmakeMove(move, undo);
-
-					// If reduction fails high, re-search at full depth
-					if (score > alpha)
-					{
-						undo = board.MakeSearchMove(board, move);
-						score = -Negamax(board, depth - 1, -beta, -alpha, !isWhiteToMove, tt);
-						board.UnmakeMove(move, undo);
-					}
-				}
-				else
-				{
-					UndoInfo undo = board.MakeSearchMove(board, move);
-					score = -Negamax(board, depth - 1, -beta, -alpha, !isWhiteToMove, tt);
-					board.UnmakeMove(move, undo);
-				}
-
-				//for (int i = 0; i < 12; i++)
-				//{
-				//    if (board.bitboards[i] != beforeBB[i])
-				//    {
-				//        Console.WriteLine($"*** DRIFT at ply bitboard[{i}] after path: {string.Join(" -> ", _currentPath.Select(m => MoveNotation.ToAlgebraicNotation(m)))}");
-				//        Debugger.Break();
-				//        break;
-				//    }
-				//}
-
-				//_currentPath.RemoveAt(_currentPath.Count - 1);
-
-				if (score > bestScore)
-				{
-					bestScore = score;
-					bestMove = move;
-				}
-				alpha = Math.Max(alpha, score);
-				if (alpha >= beta)
-				{
-					if (move.PieceCaptured == Piece.None)
-					{
-						if (!move.Equals(killerMoves[depth, 0]))
-						{
-							killerMoves[depth, 1] = killerMoves[depth, 0];
-							killerMoves[depth, 0] = move;
-						}
-						MoveOrdering.RecordHistory(move, depth);
-					}
-					break;
-				}
-			}
-
-			NodeType flag = bestScore <= origAlpha ? NodeType.UpperBound
-						  : bestScore >= beta ? NodeType.LowerBound
-						  : NodeType.Exact;
-			tt.Store(key, depth, bestScore, bestMove, flag);
-			return bestScore;
-		}
-		private static bool IsGoodCapture(Board board, Move move)
-		{
-			// Simple MVV-LVA: only allow captures where captured >= moved
-			return ((int)move.PieceCaptured)%6 >= ((int)move.PieceMoved)%6;
-		}
-
-		private static int Quiesce(Board board, int alpha, int beta, bool isWhiteToMove)
-		{
-			int standPat = Eval.EvalBoard(board, isWhiteToMove);
-			if (standPat >= beta) return beta;
-			alpha = Math.Max(alpha, standPat);
-
-			// Generate all captures
-			var capMoves = MoveGen.GenerateCaptureMoves(board, isWhiteToMove);
-
-			// --- Add promotions to quiescence ---
-			var promoMoves = MoveGen.GeneratePromotionMoves(board, isWhiteToMove);
-				
-
-			// Combine captures and promotions
-			var qMoves = new List<Move>(capMoves.Count + promoMoves.Count);
-			qMoves.AddRange(capMoves);
-			qMoves.AddRange(promoMoves);
-
-			MoveGen.FlagCheckAndMate(board, qMoves, isWhiteToMove);
-			qMoves = MoveOrdering.OrderMoves(board, qMoves, null, 0);
-
-			foreach (var move in qMoves)
-			{
-				// --- Delta Pruning: skip bad captures ---
-				if ((move.Flags & MoveFlags.Promotion) == 0 && !IsGoodCapture(board, move)) continue;
-
-				//if (_currentPath != null) _currentPath.Add(move);
-				//var beforeBB = (ulong[])board.bitboards.Clone();
-
-				UndoInfo undo = board.MakeSearchMove(board, move);
-				int score = -Quiesce(board, -beta, -alpha, !isWhiteToMove);
-				board.UnmakeMove(move, undo);
-
-				//if (_currentPath != null)
-				//{
-				//    for (int i = 0; i < 12; i++)
-				//    {
-				//        if (board.bitboards[i] != beforeBB[i])
-				//        {
-				//            Console.WriteLine($"*** DRIFT in quiesce bitboard[{i}] after path: {string.Join(" -> ", _currentPath.Select(m => MoveNotation.ToAlgebraicNotation(m)))}");
-				//            Debugger.Break();
-				//            break;
-				//        }
-				//    }
-				//}
-
-				//if (_currentPath != null) _currentPath.RemoveAt(_currentPath.Count - 1);
-
-				if (score >= beta) return beta;
-				alpha = Math.Max(alpha, score);
-			}
-			return alpha;
-		}
-
-		private static int PVS(Board board, int depth, int alpha, int beta, bool isWhiteToMove, TranspositionTable tt)
-		{
-			NodesVisited++;
-			if (depth == 0)
-				return Quiesce(board, alpha, beta, isWhiteToMove);
-
-			ulong key = board.zobristKey;
-			int origAlpha = alpha;
-			if (tt.Probe(key, depth, alpha, beta, out int ttScore, out Move ttMove))
-				return ttScore;
-
-			int kingSq = MoveGen.GetKingSquare(board, isWhiteToMove);
-			bool inCheck = MoveGen.IsSquareAttacked(board, kingSq, isWhiteToMove);
-
-			// Null Move Pruning
-			if (depth >= 3 && !inCheck && HasSufficientMaterial(board, isWhiteToMove))
-			{
-				var undoNull = board.MakeNullMove();
-				int nullScore = -PVS(board, depth - (3+depth*2/9), -beta, -beta + 1, !isWhiteToMove, tt);
-				board.UnmakeNullMove(undoNull);
-
-				if (nullScore >= beta)
-					return beta;
-			}
-
-			var moves = MoveGen.FilteredLegalMoves(board, isWhiteToMove);
-			if (moves.Count == 0)
-				return inCheck ? -MateScore + (MaxDepth - depth) : 0;
-
-			moves = MoveOrdering.OrderMoves(board, moves, ttMove, depth);
-
-			int bestScore = int.MinValue;
-			Move bestMove = default;
-			int moveCount = 0;
-
-			foreach (var move in moves)
-			{
-				moveCount++;
 
                 // --- Late Move Pruning (LMP) ---
                 // Only for quiet moves, not in check, not first few moves, and at low depth
                 if (depth <= 3 &&
                     !inCheck &&
-                    move.PieceCaptured == Piece.None &&
-                    (move.Flags & MoveFlags.Promotion) == 0 &&
-                    moveCount > 3 + depth*7/9) // threshold can be tuned
+                    mv.PieceCaptured == Piece.None &&
+                    (mv.Flags & MoveFlags.Promotion) == 0 &&
+                    moveNum > 3 + depth*8/9) // threshold can be tuned
                 {
                     continue; // Prune this late quiet move
                 }
-
+                int staticEval = Eval.EvalMaterialsExternal(board, isWhite);
                 // --- Futility Pruning ---
                 if (depth == 2 &&
-					!inCheck &&
-					move.PieceCaptured == Piece.None &&
-					(move.Flags & MoveFlags.Promotion) == 0)
-				{
-					int staticEval = Eval.EvalBoard(board, isWhiteToMove);
+                    !inCheck &&
+                    mv.PieceCaptured == Piece.None &&
+                    (mv.Flags & MoveFlags.Promotion) == 0)
+                {
+                    
+                    //----------------------------------------
+                    int futilityMargin = 180; // tuning needed
+                    //----------------------------------------
 
-					//----------------------------------------
-					int futilityMargin = 180; // tuning needed
-					//----------------------------------------
+                    if (staticEval + futilityMargin <= alpha)
+                        continue; // Prune this move
+                }
 
-					if (staticEval + futilityMargin <= alpha)
-						continue; // Prune this move
-				}
+                int LmrSafetyMargin = 40; // tuning needed
 
-				// --- Late Move Reductions (LMR) ---
-				bool canReduce =
-					depth >= 3 &&
-					moveCount > 3 &&
-					!inCheck &&
-					move.PieceCaptured == Piece.None &&
-					(move.Flags & MoveFlags.Promotion) == 0;
+                bool isKiller = mv.Equals(killerMoves[depth, 0]) || mv.Equals(killerMoves[depth, 1]);
 
-				int score;
-				UndoInfo undo = board.MakeSearchMove(board, move);
+                bool isTTMove = mv.Equals(ttMove);
 
-				if (moveCount == 1)
-				{
-					// First move: full window, no reduction
-					score = -PVS(board, depth - 1, -beta, -alpha, !isWhiteToMove, tt);
-				}
-				else if (canReduce)
-				{
-                    int R = 3 + depth / 4;
-                    // Reduced-depth null window search
-                    score = -PVS(board, depth - R, -alpha - 1, -alpha, !isWhiteToMove, tt);
-					// If reduction fails high, re-search at full depth and window
-					if (score > alpha)
-					{
-						score = -PVS(board, depth - 1, -alpha - 1, -alpha, !isWhiteToMove, tt);
-						if (score > alpha && score < beta)
-							score = -PVS(board, depth - 1, -beta, -alpha, !isWhiteToMove, tt);
-					}
-				}
-				else
-				{
-					// Null window search
-					score = -PVS(board, depth - 1, -alpha - 1, -alpha, !isWhiteToMove, tt);
-					if (score > alpha && score < beta)
-						score = -PVS(board, depth - 1, -beta, -alpha, !isWhiteToMove, tt);
-				}
+                int safeMoves = 3 + depth / 3; // e.g. at depth 6, don't reduce first ~5
+                bool canReduce =
+                    depth >= 4 &&
+                    moveNum > safeMoves &&
+                    !inCheck &&
+                    mv.PieceCaptured == Piece.None &&
+                    (mv.Flags & MoveFlags.Promotion) == 0 &&
+                    !isKiller &&
+                    !isTTMove &&
+                    staticEval + LmrSafetyMargin <= alpha;
 
-				board.UnmakeMove(move, undo);
+                var undo = board.MakeSearchMove(board, mv);
+                int score;
 
-				if (score > bestScore)
-				{
-					bestScore = score;
-					bestMove = move;
-				}
-				alpha = Math.Max(alpha, score);
-				if (alpha >= beta)
-				{
-					// Store killer moves/history as in your Negamax
-					if (move.PieceCaptured == Piece.None)
-					{
-						//below this
-						if (!move.Equals(killerMoves[depth, 0]))
-						{
-							killerMoves[depth, 1] = killerMoves[depth, 0];
-							killerMoves[depth, 0] = move;
-						}
-						MoveOrdering.RecordHistory(move, depth);
-					}
-					break;
-				}
-			}
+                if (moveNum == 1)
+                {
+                    score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt);
+                }
+                else if (canReduce)
+                {
+                    reduced++;
+                    int R = 2 + depth / 6;
+                    score = -PVS(board, depth - R, -alpha - 1, -alpha, !isWhite, tt);
+                    if (score > alpha)
+                    {
+                        researched++;
+                        score = -PVS(board, depth - 1, -alpha - 1, -alpha, !isWhite, tt);
+                        if (score > alpha && score < beta)
+                            score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt);
+                    }
+                }
+                else
+                {
+                    nullwindow++;
+                    score = -PVS(board, depth - 1, -alpha - 1, -alpha, !isWhite, tt);
+                    if (score > alpha && score < beta) { 
+                        nullReseached++;
+                        score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt);
+                    }
+                }
 
-			NodeType flag = bestScore <= origAlpha ? NodeType.UpperBound
-						  : bestScore >= beta ? NodeType.LowerBound
-						  : NodeType.Exact;
-			tt.Store(key, depth, bestScore, bestMove, flag);
-			return bestScore;
-		}
-	}
+                board.UnmakeMove(mv, undo);
+
+                if (score > best)
+                {
+                    best = score;
+                    bestMove = mv;
+                }
+                alpha = Math.Max(alpha, score);
+                if (alpha >= beta)
+                {
+                    // Store killer moves/history as in your Negamax
+                    if (mv.PieceCaptured == Piece.None)
+                    {
+                        //below this
+                        if (!mv.Equals(killerMoves[depth, 0]))
+                        {
+                            killerMoves[depth, 1] = killerMoves[depth, 0];
+                            killerMoves[depth, 0] = mv;
+                        }
+                        MoveOrdering.RecordHistory(mv, depth);
+                    }
+                    break;
+                }
+            }
+
+            NodeType flag = best <= origAlpha ? NodeType.UpperBound : best >= beta ? NodeType.LowerBound : NodeType.Exact;
+            tt.Store(key, depth, best, bestMove, flag);
+            return best;
+        }
+
+        private static int Quiesce(Board board, int alpha, int beta, bool isWhite, int qDepth)
+        {
+            if (qDepth >= MaxQDepth)
+                return Eval.EvalBoard(board, isWhite);
+
+            //Console.WriteLine($"Quiesce: Depth={qDepth}, Alpha={alpha}, Beta={beta}, IsWhite={isWhite}");
+            bool inCheck = MoveGen.IsInCheck(board, isWhite);
+            int stand = Eval.EvalMatAndPST(board, isWhite);
+            if (stand >= beta)
+                return beta;
+
+            if (_qBuffer[qDepth - 1] == null || _moveBuffer.Length < 128)
+                _qBuffer[qDepth - 1] = new Move[128];
+
+            alpha = Math.Max(alpha, stand);
+
+            Span<Move> full = new Span<Move>(_qBuffer[qDepth - 1]);
+            int qCount = 0;
+            if (inCheck)
+            {
+                // Generate ALL legal moves
+                MoveGen.FilteredLegalMoves(board, new Span<Move>(_qBuffer[qDepth - 1]), ref qDepth, isWhite);
+            }
+            else
+            {
+                // Generate captures + promotions into single buffer
+                SpecialMoveGen.GenerateCaptureMoves(board, full, ref qCount, isWhite);
+                SpecialMoveGen.GeneratePromotionMoves(board, full, ref qCount, isWhite);
+                
+            }
+            Span<Move> moves = full.Slice(0, qCount);
+            //QuiesceMoveOrdering.OrderQuiesceMoves(board, moves);
+            MoveOrdering.OrderMoves(board, moves);
+            foreach (var mv in moves)
+            {
+                if ((mv.Flags & MoveFlags.Promotion) == 0 && !IsGoodCapture(mv))
+                    continue;
+
+                var undo = board.MakeSearchMove(board, mv);
+                int score = -Quiesce(board, -beta, -alpha, !isWhite, qDepth+1);
+                board.UnmakeMove(mv, undo);
+
+                if (score >= beta) return beta;
+                alpha = Math.Max(alpha, score);
+            }
+
+            return alpha;
+        }
+
+        private static bool HasSufficientMaterial(Board board, bool isWhiteToMove)
+        {
+            int offset = isWhiteToMove ? 0 : 6;
+            int pawns = BitOperations.PopCount(board.bitboards[offset + (int)Piece.WhitePawn]);
+            int knights = BitOperations.PopCount(board.bitboards[offset + (int)Piece.WhiteKnight]);
+            int bishops = BitOperations.PopCount(board.bitboards[offset + (int)Piece.WhiteBishop]);
+            int rooks = BitOperations.PopCount(board.bitboards[offset + (int)Piece.WhiteRook]);
+            int queens = BitOperations.PopCount(board.bitboards[offset + (int)Piece.WhiteQueen]);
+
+            if (pawns > 0 || rooks > 0 || queens > 0) return true;
+            if (bishops >= 2) return true;
+            if (bishops == 1 && knights >= 1) return true;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsGoodCapture(Move mv)
+        {
+            return ((int)mv.PieceCaptured % 6) >= ((int)mv.PieceMoved % 6);
+        }
+    }
 }
