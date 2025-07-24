@@ -15,11 +15,6 @@ namespace ChessC_
         // Generate capture moves into span
         public static void GenerateCaptureMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
         {
-            if (MoveGen.IsInCheck(board, isWhite))
-            {
-                MoveGen.FilteredLegalMoves(board, moves, ref count, isWhite);
-                return;
-            }
 
             ulong enemyOcc = board.occupancies[isWhite ? (int)Color.Black : (int)Color.White];
             ulong occ = board.occupancies[2] & ~board.bitboards[isWhite ? 11 : 5];

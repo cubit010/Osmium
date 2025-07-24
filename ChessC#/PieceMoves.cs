@@ -21,7 +21,7 @@ namespace ChessC_
             ref int count)
         {
             ulong occupancy = board.occupancies[(int)Color.White] | board.occupancies[(int)Color.Black];
-            ulong attacks   = Magics.GetRookAttacks(square, occupancy);
+            ulong attacks = Magics.GetRookAttacks(square, occupancy);
 
             Piece movePiece = isWhite
                 ? (isQueen ? Piece.WhiteQueen : Piece.WhiteRook)
@@ -30,7 +30,7 @@ namespace ChessC_
             ulong targets = attacks & ~friendly;
             while (targets != 0)
             {
-                int  to   = BitOperations.TrailingZeroCount(targets);
+                int to = BitOperations.TrailingZeroCount(targets);
                 ulong toB = 1UL << to;
 
                 Piece captured = (toB & enemy) != 0
@@ -63,7 +63,7 @@ namespace ChessC_
             ref int count)
         {
             ulong occupancy = board.occupancies[(int)Color.White] | board.occupancies[(int)Color.Black];
-            ulong attacks   = Magics.GetBishopAttacks(square, occupancy);
+            ulong attacks = Magics.GetBishopAttacks(square, occupancy);
 
             Piece movePiece = isWhite
                 ? (isQueen ? Piece.WhiteQueen : Piece.WhiteBishop)
@@ -72,7 +72,7 @@ namespace ChessC_
             ulong targets = attacks & ~friendly;
             while (targets != 0)
             {
-                int  to   = BitOperations.TrailingZeroCount(targets);
+                int to = BitOperations.TrailingZeroCount(targets);
                 ulong toB = 1UL << to;
 
                 Piece captured = (toB & enemy) != 0
@@ -103,7 +103,7 @@ namespace ChessC_
             Span<Move> moves,
             ref int count) =>
             BishopAttacks(square, friendly, enemy, isWhite, board, true, moves, ref count) |
-            RookAttacks  (square, friendly, enemy, isWhite, board, true, moves, ref count);
+            RookAttacks(square, friendly, enemy, isWhite, board, true, moves, ref count);
 
         // ─── generic generators ──────────────────────────────────────────────────
         internal static void GenerateSliderMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
@@ -111,19 +111,19 @@ namespace ChessC_
             ulong bishop, rook, queen, friendly, enemy;
             if (isWhite)
             {
-                bishop   = board.bitboards[(int)Piece.WhiteBishop];
-                rook     = board.bitboards[(int)Piece.WhiteRook];
-                queen    = board.bitboards[(int)Piece.WhiteQueen];
+                bishop = board.bitboards[(int)Piece.WhiteBishop];
+                rook = board.bitboards[(int)Piece.WhiteRook];
+                queen = board.bitboards[(int)Piece.WhiteQueen];
                 friendly = board.occupancies[(int)Color.White];
-                enemy    = board.occupancies[(int)Color.Black];
+                enemy = board.occupancies[(int)Color.Black];
             }
             else
             {
-                bishop   = board.bitboards[(int)Piece.BlackBishop];
-                rook     = board.bitboards[(int)Piece.BlackRook];
-                queen    = board.bitboards[(int)Piece.BlackQueen];
+                bishop = board.bitboards[(int)Piece.BlackBishop];
+                rook = board.bitboards[(int)Piece.BlackRook];
+                queen = board.bitboards[(int)Piece.BlackQueen];
                 friendly = board.occupancies[(int)Color.Black];
-                enemy    = board.occupancies[(int)Color.White];
+                enemy = board.occupancies[(int)Color.White];
             }
 
             // bishops
@@ -156,9 +156,9 @@ namespace ChessC_
 
         internal static void GenerateKingMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
         {
-            ulong kingBB   = board.bitboards[isWhite ? (int)Piece.WhiteKing : (int)Piece.BlackKing];
+            ulong kingBB = board.bitboards[isWhite ? (int)Piece.WhiteKing : (int)Piece.BlackKing];
             ulong friendly = board.occupancies[isWhite ? (int)Color.White : (int)Color.Black];
-            Piece moveK    = isWhite ? Piece.WhiteKing : Piece.BlackKing;
+            Piece moveK = isWhite ? Piece.WhiteKing : Piece.BlackKing;
 
             if (kingBB == 0) return;          // should never happen
 
@@ -167,7 +167,7 @@ namespace ChessC_
 
             while (attacks != 0)
             {
-                int toSq   = BitOperations.TrailingZeroCount(attacks);
+                int toSq = BitOperations.TrailingZeroCount(attacks);
                 ulong toBB = 1UL << toSq;
 
                 Piece captured = (toBB & board.occupancies[(int)(isWhite ? Color.Black : Color.White)]) != 0
@@ -189,10 +189,10 @@ namespace ChessC_
 
         internal static void GenerateKnightMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
         {
-            ulong knights  = board.bitboards[isWhite ? (int)Piece.WhiteKnight : (int)Piece.BlackKnight];
+            ulong knights = board.bitboards[isWhite ? (int)Piece.WhiteKnight : (int)Piece.BlackKnight];
             ulong friendly = board.occupancies[isWhite ? (int)Color.White : (int)Color.Black];
-            ulong enemy    = board.occupancies[isWhite ? (int)Color.Black : (int)Color.White];
-            Piece moveN    = isWhite ? Piece.WhiteKnight : Piece.BlackKnight;
+            ulong enemy = board.occupancies[isWhite ? (int)Color.Black : (int)Color.White];
+            Piece moveN = isWhite ? Piece.WhiteKnight : Piece.BlackKnight;
 
             while (knights != 0)
             {
@@ -201,7 +201,7 @@ namespace ChessC_
 
                 while (movesMask != 0)
                 {
-                    int  toSq  = BitOperations.TrailingZeroCount(movesMask);
+                    int toSq = BitOperations.TrailingZeroCount(movesMask);
                     ulong toBB = 1UL << toSq;
 
                     Piece captured = (toBB & enemy) != 0

@@ -1,4 +1,6 @@
 ﻿
+using System.Runtime.CompilerServices;
+
 namespace ChessC_
 {
     /*
@@ -20,10 +22,19 @@ namespace ChessC_
 			Board board = new();
 
 			//custom debug fen
-			//Fen.LoadFEN(board, "4k1n1/3pppp1/8/8/8/8/3PPPP1/4K1N1 w - - 0 1");Add commentMore actions
+
+			//pin -7
+			//Fen.LoadFEN(board, "6k1/8/8/8/8/4K3/5N2/6q1 w - - 0 1");
+			//pin +9
+			//Fen.LoadFEN(board, "6k1/8/8/6q1/5N2/4K3/8/8 w - - 0 1");
+			//Fen.LoadFEN(board, " rn1qkbnr/pppbpQp1/3p3p/8/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4");
+
+			//Fen.LoadFEN(board, "4k1n1/3pppp1/8/8/8/8/3PPPP1/4K1N1 w - - 0 1");
+
 			//Fen.LoadFEN(board, "4k3/3pppp1/8/8/8/8/3PPPP1/4K3 w - - 0 1"); 
 			//Fen.LoadFEN(board, "4k3/3pp3/5p2/6p1/3PP3/8/5PP1/4K3 w - - 0 1");
 			//Fen.LoadFEN(board, "r1bqkbnr/p1pppppp/1pn5/8/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 2 3");
+			//Fen.LoadFEN(board, "rnbqkb1r/1ppppp2/8/p5pp/4nP1K/8/PPPP2PP/RNBQ1BNR w - - 0 1");
 
 			//Fen.LoadFEN(board, "r1bqkbnr/p1p1pppp/1pn5/3p4/4P1P1/2N5/PPPP1P1P/R1BQKBNR w KQkq d6 0 4");
 			//black pawn enpassant
@@ -65,11 +76,15 @@ namespace ChessC_
 			//---------------------------//
 			// Regular Opening Position  //
 			//---------------------------//
-			
+
 
 			Fen.LoadFEN(board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
-			var stopwatch = new System.Diagnostics.Stopwatch();
+			//make sure all data tables are initialized and ready to go at the start
+            RuntimeHelpers.RunClassConstructor(typeof(MoveTables).TypeHandle);
+            RuntimeHelpers.RunClassConstructor(typeof(Bitboard).TypeHandle);
+            RuntimeHelpers.RunClassConstructor(typeof(Magics).TypeHandle);
+            var stopwatch = new System.Diagnostics.Stopwatch();
 
 			bool playerPlaysWhite;
 
@@ -81,8 +96,8 @@ namespace ChessC_
 
 			 
 			int msThink = 5000; // Default thinking time in milliseconds
-			int threads = 8;
-			bool useSMP = false;
+			//int threads = 8;
+			//bool useSMP = false;
 			
 
 			// 3) Ask player if they play as White or Black
@@ -122,16 +137,31 @@ namespace ChessC_
 				Console.WriteLine("Please enter a valid number of seconds (1-120), or press Enter for default.");
 			}
 
+			
 			if (!playerPlaysWhite)
 			{
-				// If the player plays black, we need to make the first move for white
-				// This is just a placeholder; you can change it to any opening move you like
-				Move firstMove = Search.FindBestMove(board, tt, msThink);
-				board.MakeRealMove(firstMove);
-				Console.WriteLine($"Engine> {MoveNotation.ToAlgebraicNotation(firstMove)}\n");
-			}
+				if (board.sideToMove == Color.White)
+				{
+                    // If the player plays black, we need to make the first move for white
+                    // This is just a placeholder; you can change it to any opening move you like
+                    Move firstMove = Search.FindBestMove(board, tt, msThink);
+                    board.MakeRealMove(firstMove);
+                    Console.WriteLine($"Engine> {MoveNotation.ToAlgebraicNotation(firstMove)}\n");
+                }
 
-            Move[] playerBuffer = new Move[256];
+			} else
+			{
+				if (board.sideToMove == Color.Black)
+				{
+                    // If the player plays black, we need to make the first move for white
+                    // This is just a placeholder; you can change it to any opening move you like
+                    Move firstMove = Search.FindBestMove(board, tt, msThink);
+                    board.MakeRealMove(firstMove);
+                    Console.WriteLine($"Engine> {MoveNotation.ToAlgebraicNotation(firstMove)}\n");
+                }
+            }
+
+				Move[] playerBuffer = new Move[256];
             Console.WriteLine("Enter moves in SAN (e.g. e4, Nf3, O-O). Type 'quit' to exit.\n");
 
 			while (true)
@@ -154,6 +184,19 @@ namespace ChessC_
 				}/**/
 				//MoveGen.FlagCheckAndMate(board, legalMoves, isWhiteToMove);
 				//Utils.PrintBoard(board);
+
+				if (legalCount == 0)
+				{
+					Console.WriteLine("No legal moves available.");
+					if (MoveGen.IsInCheck(board, isWhiteToMove))
+					{
+						Console.WriteLine("Checkmate! " + (isWhiteToMove ? "Black" : "White") + " wins.");
+					}
+					else
+					{
+						Console.WriteLine("Stalemate! The game is a draw.");
+					}
+				}
 
 				var sanToMove = new Dictionary<string, Move>(StringComparer.Ordinal);
 				foreach (var m in legalMoves)

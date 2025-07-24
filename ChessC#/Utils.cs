@@ -53,22 +53,7 @@ namespace ChessC_
         }
         public static void PrintBoard(Board board)
         {
-            for (int rank = 7; rank >= 0; rank--)
-            {
-                Console.Write($"{rank + 1} "); // Rank labels
-                for (int file = 0; file < 8; file++)
-                {
-                    int squareIndex = rank * 8 + file;
-                    Piece piece = FindPieceAt(board, (Square)squareIndex);
-
-                    if (piece == Piece.None)
-                        Console.Write(". ");
-                    else
-                        Console.Write($"{PieceToChar(piece)} ");
-                }
-                Console.WriteLine();
-            }
-            Console.WriteLine("  a b c d e f g h\n"); // File labels
+            Console.WriteLine(GetBoardString(board));
         }
         public static void PrintBitboard(ulong bitboard)
         {

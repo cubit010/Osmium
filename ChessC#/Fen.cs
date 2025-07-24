@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Globalization;
+using System.Text;
 
 namespace ChessC_
 {
@@ -120,6 +121,95 @@ namespace ChessC_
                 'k' => Piece.BlackKing,
                 _ => Piece.None
             };
+        }
+        private static char PieceToChar(Piece piece)
+        {
+            return piece switch
+            {
+                Piece.WhitePawn => 'P',
+                Piece.WhiteKnight => 'N',
+                Piece.WhiteBishop => 'B',
+                Piece.WhiteRook => 'R',
+                Piece.WhiteQueen => 'Q',
+                Piece.WhiteKing => 'K',
+                Piece.BlackPawn => 'p',
+                Piece.BlackKnight => 'n',
+                Piece.BlackBishop => 'b',
+                Piece.BlackRook => 'r',
+                Piece.BlackQueen => 'q',
+                Piece.BlackKing => 'k',
+                _ => '.'
+            };
+        }
+        internal static string ToFEN(Board board)
+        {
+            var sb = new StringBuilder();
+
+            // 1) Piece placement
+            for (int rank = 7; rank >= 0; rank--)
+            {
+                int empty = 0;
+                for (int file = 0; file < 8; file++)
+                {
+                    int sq = rank * 8 + file;
+                    Piece piece = MoveGen.FindPieceAt(board, sq);
+                    if (piece == Piece.None)
+                    {
+                        empty++;
+                    }
+                    else
+                    {
+                        if (empty > 0)
+                        {
+                            sb.Append(empty);
+                            empty = 0;
+                        }
+                        sb.Append(PieceToChar(piece));
+                    }
+                }
+                if (empty > 0)
+                    sb.Append(empty);
+                if (rank > 0)
+                    sb.Append('/');
+            }
+
+            // 2) Active color
+            sb.Append(' ');
+            sb.Append(board.sideToMove == Color.White ? 'w' : 'b');
+
+            // 3) Castling rights
+            sb.Append(' ');
+            var castling = board.castlingRights;
+            string castlingStr = "";
+            if ((castling & Castling.WhiteKing) != 0) castlingStr += "K";
+            if ((castling & Castling.WhiteQueen) != 0) castlingStr += "Q";
+            if ((castling & Castling.BlackKing) != 0) castlingStr += "k";
+            if ((castling & Castling.BlackQueen) != 0) castlingStr += "q";
+            sb.Append(string.IsNullOrEmpty(castlingStr) ? "-" : castlingStr);
+
+            // 4) En passant target square
+            sb.Append(' ');
+            if (board.enPassantSquare == Square.None)
+            {
+                sb.Append('-');
+            }
+            else
+            {
+                int file = (int)board.enPassantSquare % 8;
+                int rank = (int)board.enPassantSquare / 8;
+                sb.Append((char)('a' + file));
+                sb.Append((char)('1' + rank));
+            }
+
+            // 5) Halfmove clock
+            sb.Append(' ');
+            sb.Append(board.halfmoveClock);
+
+            // 6) Fullmove number
+            sb.Append(' ');
+            sb.Append(board.fullmoveNumber);
+
+            return sb.ToString();
         }
     }
 }

@@ -79,11 +79,15 @@ namespace ChessC_
             }
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Probe(ulong key, int depth, int alpha, int beta, out int score, out Move bestMove)
         {
             int idx = (int)(key & (ulong)mask);
-            ulong entry = entries[idx];
+
+            // Use local variable for entries to help JIT optimizations
+            var localEntries = entries;
+            ulong entry = localEntries[idx];
 
             // quick tag check
             if (UnpackTag(entry) != (ushort)(key & 0xFFFF))
@@ -93,7 +97,8 @@ namespace ChessC_
             }
 
             // optional full-key verify
-            if (fullKeys != null && fullKeys[idx] != key)
+            var localFullKeys = fullKeys;
+            if (localFullKeys != null && localFullKeys[idx] != key)
             {
                 score = 0; bestMove = default;
                 return false;
@@ -106,8 +111,8 @@ namespace ChessC_
             ushort umove = UnpackMove(entry);
             NodeType t = UnpackType(entry);
 
-            bestMove = DecodeMove(umove); // you must implement Decode←ushort
-            score = (short)uscore;     // cast back to signed
+            bestMove = DecodeMove(umove);
+            score = (short)uscore;
 
             if (age != currentAge || edepth < depth)
                 return false;

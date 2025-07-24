@@ -25,17 +25,23 @@ namespace ChessC_
         [ThreadStatic]
         private static Move[][] _qBuffer = new Move[QBufferDepth][];
 
+        static Search()
+        {
+            for (int i = 0; i < MaxDepth; i++)
+            {
+                _moveBuffer[i] = new Move[256]; // Adjust size as needed
+            }
+            for (int i = 0; i < QBufferDepth; i++)
+            {
+                _qBuffer[i] = new Move[128]; // Adjust size as needed
+            }
+        }
         internal static Move FindBestMove(Board board, TranspositionTable tt, int timeLimitMs)
         {
             Move lastBest = default;
             int lastScore = 0;
             var sw = Stopwatch.StartNew();
-            for (int i = 0; i < MaxDepth; i++)
-            {
-                // Ensure each depth has its own move buffer
-                if (_moveBuffer[i] == null || _moveBuffer.Length < 256)
-                    _moveBuffer[i] = new Move[256];
-            }
+
             for (int depth = 1; depth <= MaxDepth; depth++)
             {
                 var iterStart = Stopwatch.StartNew();
@@ -64,7 +70,7 @@ namespace ChessC_
                 lastScore = score;
                 lastBest = bestMove;
                 iterStart.Stop();
-                Console.WriteLine($"Depth {depth}: Nodes={NodesVisited}, Time={iterStart.ElapsedMilliseconds} ms, Best={lastBest}");
+                Console.WriteLine($"Depth {depth,-2}: Nodes:{NodesVisited,-10} | Time: {iterStart.ElapsedMilliseconds,-6} ms | Best={MoveNotation.ToAlgebraicNotation(lastBest), 6} | NPS: {1000.0*NodesVisited/Math.Max(0.8, iterStart.ElapsedMilliseconds),12:F2}");
             }
 
             sw.Stop();
@@ -93,6 +99,9 @@ namespace ChessC_
             bool isWhite = board.sideToMove == Color.White;
             bestScore = int.MinValue;
             Move bestMove = default;
+
+            // DEBUG: Compare move filters
+            //MoveFilterDifferer.Compare(board, isWhite);
 
             // --- Generate legal moves ---
             Span<Move> full = new Span<Move>(_moveBuffer[depth-1]);
@@ -127,6 +136,7 @@ namespace ChessC_
 
             return bestMove;
         }
+        
         public static int reduced = 0;
         public static int researched = 0;
         public static int nullwindow = 0;
@@ -158,6 +168,11 @@ namespace ChessC_
                     return beta;
             }
 
+
+            // DEBUG: Compare move filters
+            //MoveFilterDifferer.Compare(board, isWhite);
+
+
             // --- Generate legal moves ---
             Span<Move> full = new Span<Move>(_moveBuffer[depth - 1]);
             int count = 0;
@@ -171,6 +186,8 @@ namespace ChessC_
             int best = int.MinValue;
             Move bestMove = default;
             int moveNum = 0;
+
+            int staticEval = isWhite? board.materialDelta : -board.materialDelta;
 
             foreach (var mv in moves)
             {
@@ -187,7 +204,8 @@ namespace ChessC_
                 {
                     continue; // Prune this late quiet move
                 }
-                int staticEval = Eval.EvalMaterialsExternal(board, isWhite);
+
+                
                 // --- Futility Pruning ---
                 if (depth == 2 &&
                     !inCheck &&
@@ -209,7 +227,7 @@ namespace ChessC_
 
                 bool isTTMove = mv.Equals(ttMove);
 
-                int safeMoves = 3 + depth / 3; // e.g. at depth 6, don't reduce first ~5
+                int safeMoves = 3 + depth / 2; // e.g. at depth 6, don't reduce first ~5
                 bool canReduce =
                     depth >= 4 &&
                     moveNum > safeMoves &&
@@ -230,7 +248,7 @@ namespace ChessC_
                 else if (canReduce)
                 {
                     reduced++;
-                    int R = 2 + depth / 6;
+                    int R = 2 + depth / 7;
                     score = -PVS(board, depth - R, -alpha - 1, -alpha, !isWhite, tt);
                     if (score > alpha)
                     {
@@ -291,9 +309,6 @@ namespace ChessC_
             if (stand >= beta)
                 return beta;
 
-            if (_qBuffer[qDepth - 1] == null || _moveBuffer.Length < 128)
-                _qBuffer[qDepth - 1] = new Move[128];
-
             alpha = Math.Max(alpha, stand);
 
             Span<Move> full = new Span<Move>(_qBuffer[qDepth - 1]);
@@ -301,24 +316,43 @@ namespace ChessC_
             if (inCheck)
             {
                 // Generate ALL legal moves
-                MoveGen.FilteredLegalMoves(board, new Span<Move>(_qBuffer[qDepth - 1]), ref qDepth, isWhite);
+                MoveGen.FilteredLegalWithoutFlag(board, full, ref qCount, isWhite);
             }
             else
             {
                 // Generate captures + promotions into single buffer
                 SpecialMoveGen.GenerateCaptureMoves(board, full, ref qCount, isWhite);
                 SpecialMoveGen.GeneratePromotionMoves(board, full, ref qCount, isWhite);
-                
+
             }
+
+
             Span<Move> moves = full.Slice(0, qCount);
+
+            // **FILTER OUT ILLEGAL CAPTURE MOVES IN BULK**
+            //if (!inCheck)
+            //{
+            //    MoveFiltering.FilterMoves(board, moves, ref qCount, isWhite);
+
+            //    //now qCount is trimmed to only the legal ones
+            //    moves = moves.Slice(0, qCount);
+            //}
+
             //QuiesceMoveOrdering.OrderQuiesceMoves(board, moves);
             MoveOrdering.OrderMoves(board, moves);
             foreach (var mv in moves)
             {
+                //delta prune
                 if ((mv.Flags & MoveFlags.Promotion) == 0 && !IsGoodCapture(mv))
                     continue;
-
+                
                 var undo = board.MakeSearchMove(board, mv);
+                if (MoveGen.IsInCheck(board, !isWhite))
+                {
+                    // if our king is now in check, this move is illegal → skip it
+                    board.UnmakeMove(mv, undo);
+                    continue;
+                }
                 int score = -Quiesce(board, -beta, -alpha, !isWhite, qDepth+1);
                 board.UnmakeMove(mv, undo);
 

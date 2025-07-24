@@ -1,4 +1,6 @@
 ﻿
+using System.ComponentModel;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace ChessC_
@@ -29,12 +31,18 @@ namespace ChessC_
 		public Board()
 		{
 			enPassantSquare = Square.None;
-		}
+            InitMaterials();
+        }
+        
+        public override string ToString()
+        {
+            return Utils.GetBoardString(this);
+        }
+
 		public ulong[] bitboards = new ulong[12]; // 6 piece types × 2 colors
 		public ulong[] occupancies = new ulong[3]; // White, Black, Both
 
-        //public int WhiteMaterial;
-        //public int BlackMaterial;
+        public int materialDelta;
 
         public Color sideToMove;
 		public Castling castlingRights;
@@ -48,18 +56,23 @@ namespace ChessC_
 		// History stack
 		private Stack<BoardState> history = [];
 
-		// Put in a constructor or reset method
+        // Put in a constructor or reset method
+        public static readonly int[] pieceValues =
+           [
+	        // P, N, B, R, Q,
+			    100,  320,  330,  500,  900, 0,
+                -100, -320, -330, -500, -900, 0,
+            ];
+        public void InitMaterials()
+        {
+            // Calculate material values based on piece types
 
-        //public void InitMaterials()
-        //{
-        //    WhiteMaterial = 0;
-        //    BlackMaterial = 0;
-        //    // Calculate material values based on piece types
-        //    for (int i = 0; i < 6; i++) // White pieces
-        //        WhiteMaterial += Bitboard.PopCount(bitboards[i]) * Eval.pieceValues[i];
-        //    for (int i = 6; i < 12; i++) // Black pieces
-        //        BlackMaterial += Bitboard.PopCount(bitboards[i]) * Eval.pieceValues[i - 6];
-        //}
+            for (int i = 0; i < 5; i++) // White pieces
+                materialDelta += BitOperations.PopCount(bitboards[i]) * pieceValues[i];
+
+            for (int i = 6; i < 11; i++) // Black pieces
+                materialDelta -= BitOperations.PopCount(bitboards[i]) * pieceValues[i - 6];
+        }
         public void ComputeInitialZobrist()
 		{
 			zobristKey = 0UL;
@@ -141,7 +154,7 @@ namespace ChessC_
             public int PreviousFullmoveNumber;
             public ulong PreviousZobristKey;
         }
-
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NullMoveUndoInfo MakeNullMove()
         {
             var undo = new NullMoveUndoInfo
@@ -166,7 +179,7 @@ namespace ChessC_
 
             return undo;
         }
-
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void UnmakeNullMove(NullMoveUndoInfo undo)
         {
             enPassantSquare = undo.PreviousEnPassantSquare;
@@ -198,8 +211,9 @@ namespace ChessC_
             ApplyMoveInternal(move);
         }
 
-		// Undoes the last made move
-		public void UnmakeMove(Move move, UndoInfo undoInfo)
+        // Undoes the last made move
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void UnmakeMove(Move move, UndoInfo undoInfo)
 		{
             // 1) Restore metadata
             castlingRights = undoInfo.PreviousCastlingRights;
@@ -212,15 +226,21 @@ namespace ChessC_
             int fromIdx = (int)move.From;
             int toIdx = (int)move.To;
             int moved = (int)move.PieceMoved;
-
+            
             // Handle promotions
             if ((move.Flags & MoveFlags.Promotion) != 0)
             {
                 int promo = (int)move.PromotionPiece;
                 // Remove promoted piece
                 bitboards[promo] &= ~(1UL << toIdx);
+
+                // remove promoted piece value from material count, add back pawn value
+
+                materialDelta -= (pieceValues[promo] - pieceValues[moved]);
+
                 // Restore pawn on source
                 bitboards[moved] |= (1UL << fromIdx);
+                
             }
             else
             {
@@ -233,13 +253,22 @@ namespace ChessC_
             if ((move.Flags & MoveFlags.EnPassant) != 0)
             {
                 int capIdx = (moved == (int)Piece.WhitePawn) ? toIdx - 8 : toIdx + 8;
-                Piece capPiece = (moved == (int)Piece.WhitePawn) ? Piece.BlackPawn : Piece.WhitePawn;
-                bitboards[(int)capPiece] |= (1UL << capIdx);
+                int capPiece = (int)move.PieceCaptured;
+                bitboards[capPiece] |= (1UL << capIdx);
+
+                //add 1 pawn to material count for side that got captured
+                // add back the material value of the captured pawn
+                materialDelta += pieceValues[capPiece];
+
             }
             else if (move.PieceCaptured != Piece.None)
             {
                 int captured = (int)move.PieceCaptured;
                 bitboards[captured] |= (1UL << toIdx);
+
+                //add piece value to material count for side that got captured
+                // add back the material value of the captured piece
+                materialDelta += pieceValues[captured];
             }
 
             // Handle castling rook restoration
@@ -279,7 +308,7 @@ namespace ChessC_
         }
 
         // Actual logic to mutate bitboards, occupancies, castling, en passant, etc.
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ApplyMoveInternal(Move move)
         {
             int fromIdx = (int)move.From;
@@ -317,8 +346,12 @@ namespace ChessC_
             {
                 int capIdx = (moved == (int)Piece.WhitePawn) ? toIdx - 8 : toIdx + 8;
                 ulong capMask = 1UL << capIdx;
-                int capPiece = (moved == (int)Piece.WhitePawn) ? (int)Piece.BlackPawn : (int)Piece.WhitePawn;
+                int capPiece = (int)move.PieceCaptured;
                 ref ulong capBB = ref bitboards[capPiece];
+                // remove pawn ep material value
+
+                materialDelta -= pieceValues[capPiece]; 
+
                 capBB &= ~capMask;
                 zobristKey ^= Zobrist.PieceSquare[capPiece, capIdx];
             }
@@ -327,6 +360,10 @@ namespace ChessC_
                 int captured = (int)move.PieceCaptured;
                 ref ulong capBB = ref bitboards[captured];
                 capBB &= ~toMask;
+                // remove captured material value
+
+                materialDelta -= pieceValues[captured]; // if white moved, we subtract from black, which is net -value to materialDelta
+                
                 zobristKey ^= Zobrist.PieceSquare[captured, toIdx];
             }
 
@@ -335,6 +372,9 @@ namespace ChessC_
             {
                 int promo = (int)move.PromotionPiece;
                 ref ulong promoBB = ref bitboards[promo];
+
+                materialDelta += pieceValues[promo]-pieceValues[moved]; // add promo value, remove pawn value
+
                 promoBB |= toMask;
                 zobristKey ^= Zobrist.PieceSquare[promo, toIdx];
             }
@@ -398,7 +438,7 @@ namespace ChessC_
                 fullmoveNumber++;
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void UpdateOccupancies()
         {
             // Local variables for speed
@@ -420,19 +460,19 @@ namespace ChessC_
             occupancies[(int)Color.Black] = black;
             occupancies[2] = white | black;
         }
-        public Board Clone() { 
-            var newBoard = new Board
-            {
-                bitboards = (ulong[])this.bitboards.Clone(),
-                occupancies = (ulong[])this.occupancies.Clone(),
-                sideToMove = this.sideToMove,
-                castlingRights = this.castlingRights,
-                enPassantSquare = this.enPassantSquare,
-                halfmoveClock = this.halfmoveClock,
-                fullmoveNumber = this.fullmoveNumber,
-                zobristKey = this.zobristKey
-            };
-            return newBoard;
-        }
+        //public Board Clone() { 
+        //    var newBoard = new Board
+        //    {
+        //        bitboards = (ulong[])this.bitboards.Clone(),
+        //        occupancies = (ulong[])this.occupancies.Clone(),
+        //        sideToMove = this.sideToMove,
+        //        castlingRights = this.castlingRights,
+        //        enPassantSquare = this.enPassantSquare,
+        //        halfmoveClock = this.halfmoveClock,
+        //        fullmoveNumber = this.fullmoveNumber,
+        //        zobristKey = this.zobristKey
+        //    };
+        //    return newBoard;
+        //}
     }
 }

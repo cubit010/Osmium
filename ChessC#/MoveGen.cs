@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -64,21 +65,21 @@ namespace ChessC_
             }
         }
 
-        public static void RunMateCheck(Board board, bool oppIsWhite, Move move)
+        public static void RunMateCheck(Board board, bool sideBeingChecked, Move move)
         {
-            bool isDoubleCheck = IsDoubleCheck(board, oppIsWhite, out int atkerSq, out Piece attackerPiece);
+            bool isDoubleCheck = IsDoubleCheck(board, sideBeingChecked, out int atkerSq, out Piece attackerPiece);
 
-            if (IsEscapePossible(board, oppIsWhite)) return;
+            if (IsEscapePossible(board, sideBeingChecked)) return;
 
             if (!isDoubleCheck)
             {
                 // If it's a double check, we can't block or capture the attacker, if not, can block or capture
                 // Checks if the attacker can be blocked
 
-                if(CanCaptureCheckingPiece(board, oppIsWhite, atkerSq)) return;
+                if(CanCaptureCheckingPiece(board, sideBeingChecked, atkerSq)) return;
 
                 if ((int)attackerPiece % 6 >= 2) { 
-                    if (CanBlockCheck(board, oppIsWhite, atkerSq)) return;
+                    if (CanBlockCheck(board, sideBeingChecked, atkerSq)) return;
                 }
             }
             
@@ -104,7 +105,35 @@ namespace ChessC_
             }
             return true;
         }
+        /* Board visualization
 
+         A  B  C  D  E  F  G  H 
+
+         0  1  2  3  4  5  6  7    1
+         8  9  10 11 12 13 14 15   2
+         16 17 18 19 20 21 22 23   3
+         24 25 26 27 28 29 30 31   4
+         32 33 34 35 36 37 38 39   5
+         40 41 42 43 44 45 46 47   6
+         48 49 50 51 52 53 54 55   7
+         56 57 58 59 60 61 62 63   8
+
+         */
+
+        /* Board visualization
+
+        A  B  C  D  E  F  G  H 
+
+        56 57 58 59 60 61 62 63   8
+        48 49 50 51 52 53 54 55   7
+        40 41 42 43 44 45 46 47   6
+        32 33 34 35 36 37 38 39   5
+        24 25 26 27 28 29 30 31   4
+        16 17 18 19 20 21 22 23   3
+        8  9  10 11 12 13 14 15   2
+        0  1  2  3  4  5  6  7    1
+
+        */
         public static bool IsDoubleCheck(
             Board board,
             bool isWhiteDefend,
@@ -123,14 +152,14 @@ namespace ChessC_
             if (isWhiteDefend)
             {
                 int sq1 = kingSq + 7, sq2 = kingSq + 9;
-                if (sq1 < 64 && kingSq % 8 < 7 &&
+                if (sq1 < 64 && kingSq % 8 > 0 &&
                     (board.bitboards[(int)Piece.BlackPawn] & (1UL << sq1)) != 0)
                 {
                     atkerSq = sq1;
                     attackerPiece = Piece.BlackPawn;
                     if (++attackerCount > 1) return true;
                 }
-                if (sq2 < 64 && kingSq % 8 > 0 &&
+                if (sq2 < 64 && kingSq % 8 < 7 &&
                     (board.bitboards[(int)Piece.BlackPawn] & (1UL << sq2)) != 0)
                 {
                     atkerSq = sq2;
@@ -141,14 +170,14 @@ namespace ChessC_
             else
             {
                 int sq1 = kingSq - 7, sq2 = kingSq - 9;
-                if (sq1 >= 0 && kingSq % 8 > 0 &&
+                if (sq1 >= 0 && kingSq % 8 < 7 &&
                     (board.bitboards[(int)Piece.WhitePawn] & (1UL << sq1)) != 0)
                 {
                     atkerSq = sq1;
                     attackerPiece = Piece.WhitePawn;
                     if (++attackerCount > 1) return true;
                 }
-                if (sq2 >= 0 && kingSq % 8 < 7 &&
+                if (sq2 >= 0 && kingSq % 8 > 0  &&
                     (board.bitboards[(int)Piece.WhitePawn] & (1UL << sq2)) != 0)
                 {
                     atkerSq = sq2;
@@ -206,7 +235,7 @@ namespace ChessC_
             return false;
         }
 
-
+        //is white to move, meaning iswhite being checked, meaning checking for ways for isWhite to escape
         public static bool IsEscapePossible(Board board, bool isWhiteToMove)
         {
             int kingSquare = GetKingSquare(board, isWhiteToMove);
@@ -232,10 +261,14 @@ namespace ChessC_
 
             return false; // No legal escape
         }
-
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static bool CanCaptureCheckingPiece(Board board, bool isWhiteToMove, int square)
         {
-            ulong occ = board.occupancies[2];
+        //ulong occ;
+            
+            
+            // occ = board.occupancies[2];
+                
 
             // Pawn captures (note: capture direction is *opposite* of pawn push)
             if (isWhiteToMove)
@@ -270,18 +303,19 @@ namespace ChessC_
             ulong rq = isWhiteToMove
                 ? board.bitboards[(int)Piece.WhiteRook] | board.bitboards[(int)Piece.WhiteQueen]
                 : board.bitboards[(int)Piece.BlackRook] | board.bitboards[(int)Piece.BlackQueen];
-            if ((Magics.GetRookAttacks(square, occ) & rq) != 0)
+            if ((Magics.GetRookAttacks(square, board.occupancies[2]) & rq) != 0)
                 return true;
 
             // Bishops and Queens (bishop-like movement)
             ulong bq = isWhiteToMove
                 ? board.bitboards[(int)Piece.WhiteBishop] | board.bitboards[(int)Piece.WhiteQueen]
                 : board.bitboards[(int)Piece.BlackBishop] | board.bitboards[(int)Piece.BlackQueen];
-            if ((Magics.GetBishopAttacks(square, occ) & bq) != 0)
+            if ((Magics.GetBishopAttacks(square, board.occupancies[2]) & bq) != 0)
                 return true;
 
             return false;
         }
+        
 
         public static bool IsSquareBlockable(Board board, bool isWhiteToMove, int square)
         {
@@ -368,7 +402,7 @@ namespace ChessC_
             bool isWhiteDefend,
             int attackerSq)
         {
-            int kingSq = MoveGen.GetKingSquare(board, isWhiteDefend);
+            int kingSq = GetKingSquare(board, isWhiteDefend);
 
             // Compute file/rank differences
             int fromRank = attackerSq >> 3, fromFile = attackerSq & 7;
@@ -418,62 +452,66 @@ namespace ChessC_
             int tmpCount = 0;
 
             GenSemiLegal(board, tmp, ref tmpCount, isWhite);
-            FilterMoves(board, tmp, ref tmpCount, isWhite);
+            MoveFiltering.
+                FilterMoves(board, tmp, ref tmpCount, isWhite);
             FlagCheckAndMate(board, tmp, tmpCount, isWhite);
 
             for (int i = 0; i < tmpCount; i++)
                 result[count++] = tmp[i];
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
+        //public static void FilteredLegalWithoutFlag_Old(Board board, Span<Move> result, ref int count, bool isWhite)
+        //{
+        //    Span<Move> tmp = stackalloc Move[256];
+        //    int tmpCount = 0;
+
+        //    GenSemiLegal(board, tmp, ref tmpCount, isWhite);
+        //    //MoveFiltering.
+        //        FilterMoves(board, tmp, ref tmpCount, isWhite);
+
+        //    for (int i = 0; i < tmpCount; i++)
+        //        result[count++] = tmp[i];
+        //}
+
         public static void FilteredLegalWithoutFlag(Board board, Span<Move> result, ref int count, bool isWhite)
         {
             Span<Move> tmp = stackalloc Move[256];
             int tmpCount = 0;
 
             GenSemiLegal(board, tmp, ref tmpCount, isWhite);
-            FilterMoves(board, tmp, ref tmpCount, isWhite);
+            MoveFiltering.FilterMoves(board, tmp, ref tmpCount, isWhite);
 
             for (int i = 0; i < tmpCount; i++)
                 result[count++] = tmp[i];
         }
 
-        private static void FilterMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
-        {
-            int legalCount = 0;
+        //private static void FilterMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
+        //{
+        //    int legalCount = 0;
 
-            for (int i = 0; i < count; i++)
-            {
-                Move move = moves[i];
-                if (!SimMoveCheck(move, board, isWhite))
-                {
-                    moves[legalCount++] = move;
-                }
-            }
+        //    for (int i = 0; i < count; i++)
+        //    {
+        //        Move move = moves[i];
+        //        if (!SimMoveCheck(move, board, isWhite))
+        //        {
+        //            moves[legalCount++] = move;
+        //        }
+        //    }
 
-            count = legalCount;
-        }
-
-        // Enumerate set bits in bitboard as squares
-        private static IEnumerable<int> BitboardSquares(ulong bb)
-        {
-            while (bb != 0)
-            {
-                int sq = BitOperations.TrailingZeroCount(bb);
-                yield return sq;
-                bb &= bb - 1;
-            }
-        }
+        //    count = legalCount;
+        //}
 
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static bool SimMoveCheck(Move move, Board board, bool isWhiteToMove)
-        {
-            UndoInfo undo = board.MakeSearchMove(board, move);
-            int kingIdx = GetKingSquare(board, isWhiteToMove);
-            bool inCheck = IsSquareAttacked(board, kingIdx, isWhiteToMove);
-            board.UnmakeMove(move, undo);
-            return inCheck;
-        }
+
+        //[MethodImpl(MethodImplOptions.NoInlining)]
+        //private static bool SimMoveCheck(Move move, Board board, bool isWhiteToMove)
+        //{
+        //    UndoInfo undo = board.MakeSearchMove(board, move);
+        //    int kingIdx = GetKingSquare(board, isWhiteToMove);
+        //    bool inCheck = IsSquareAttacked(board, kingIdx, isWhiteToMove);
+        //    board.UnmakeMove(move, undo);
+        //    return inCheck;
+        //}
 
         public static bool IsInCheck(Board board, bool isWhiteDefend)
         {
