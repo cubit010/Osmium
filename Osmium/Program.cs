@@ -1,7 +1,7 @@
 ﻿
 using System.Runtime.CompilerServices;
 
-namespace ChessC_
+namespace Osmium
 {
     /*
 	 
@@ -15,11 +15,17 @@ namespace ChessC_
     class Program
 	{
 		public static int MaxDepth = 20;
+		static bool UCImode = false;
 
-		static void Main(string[] args)
+        static void Main(string[] args)
 		{
-			// 1) Initialize board from FEN or default start
-			Board board = new();
+            RuntimeHelpers.RunClassConstructor(typeof(MoveTables).TypeHandle);
+            RuntimeHelpers.RunClassConstructor(typeof(Bitboard).TypeHandle);
+            RuntimeHelpers.RunClassConstructor(typeof(Magics).TypeHandle);
+            RuntimeHelpers.RunClassConstructor(typeof(Search).TypeHandle);
+            RuntimeHelpers.RunClassConstructor(typeof(MoveOrdering).TypeHandle);
+            // 1) Initialize board from FEN or default start
+            Board board = new();
 
 			//custom debug fen
 
@@ -73,17 +79,17 @@ namespace ChessC_
 			//Fen.LoadFEN(board, "r5k1/8/8/8/8/6PP/5PPP/7K w - - 0 1");
 
 
+			//Fen.LoadFEN(board, "7k/4n2n/1p3R2/8/8/4Q3/1K6/8 w - - 0 1");
+
 			//---------------------------//
 			// Regular Opening Position  //
 			//---------------------------//
 
 
-			Fen.LoadFEN(board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+			Fen.LoadStartPos(board);
 
-			//make sure all data tables are initialized and ready to go at the start
-            RuntimeHelpers.RunClassConstructor(typeof(MoveTables).TypeHandle);
-            RuntimeHelpers.RunClassConstructor(typeof(Bitboard).TypeHandle);
-            RuntimeHelpers.RunClassConstructor(typeof(Magics).TypeHandle);
+            //make sure all data tables are initialized and ready to go at the start
+
             var stopwatch = new System.Diagnostics.Stopwatch();
 
 			bool playerPlaysWhite;
@@ -126,7 +132,6 @@ namespace ChessC_
 				string secInput = Console.ReadLine()?.Trim();
 				if (string.IsNullOrEmpty(secInput))
 				{
-					msThink = 5000;
 					break;
 				}
 				if (int.TryParse(secInput, out int seconds) && seconds > 0 && seconds < 121)

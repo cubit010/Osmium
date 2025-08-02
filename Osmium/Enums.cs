@@ -1,5 +1,5 @@
 ﻿
-namespace ChessC_
+namespace Osmium
 {
     public enum Square
     {

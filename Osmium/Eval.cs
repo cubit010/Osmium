@@ -2,7 +2,7 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
-namespace ChessC_
+namespace Osmium
 {
 	internal class Eval
 	{
@@ -340,42 +340,55 @@ namespace ChessC_
 			evalCacheValues[index] = score;
 			return score;
 		}
-		public static int EvalMaterialsExternal(Board board, bool isWhitePerspective)
+
+   //     public static void TestPSTEvals(Board board, bool isWhite, int phase)
+   //     {
+			//// For each piece type, compare SIMD and non-SIMD PST evals
+			//(ulong f, ulong e, int[] pst, string name)[] tests = new[]
+			//{
+			//	(board.bitboards[(int)(isWhite ? Piece.WhitePawn : Piece.BlackPawn)],
+			//	 board.bitboards[(int)(isWhite ? Piece.BlackPawn : Piece.WhitePawn)],
+			//	 WPawnPST, "Pawn"),
+			//	(board.bitboards[(int)(isWhite ? Piece.WhiteKnight : Piece.BlackKnight)],
+			//	 board.bitboards[(int)(isWhite ? Piece.BlackKnight : Piece.WhiteKnight)],
+			//	 WKnightPST, "Knight"),
+			//	(board.bitboards[(int)(isWhite ? Piece.WhiteBishop : Piece.BlackBishop)],
+			//	 board.bitboards[(int)(isWhite ? Piece.BlackBishop : Piece.WhiteBishop)],
+			//	 WBishopPST, "Bishop"),
+			//	(board.bitboards[(int)(isWhite ? Piece.WhiteRook : Piece.BlackRook)],
+			//	 board.bitboards[(int)(isWhite ? Piece.BlackRook : Piece.WhiteRook)],
+			//	 WRookPST, "Rook"),
+			//	(board.bitboards[(int)(isWhite ? Piece.WhiteQueen : Piece.BlackQueen)],
+			//	 board.bitboards[(int)(isWhite ? Piece.BlackQueen : Piece.WhiteQueen)],
+			//	 WQueenPST, "Queen"),
+			//};
+
+   //         foreach (var (f, e, pst, name) in tests)
+   //         {
+   //             int simd = EvalPiecePST_SIMD(f, e, isWhite, pst, phase);
+   //             int plain = EvalPiecePST(f, e, isWhite, pst, phase);
+   //             //Console.WriteLine($"{name} PST: SIMD={simd}, Plain={plain}, Match={simd == plain}");
+   //             if (simd != plain)
+   //             {
+   //                 Console.WriteLine($"  MISMATCH for {name}!");
+			//		throw new Exception($"PST eval mismatch for {name}: SIMD={simd}, Plain={plain}");
+			//	}
+				
+   //         }
+   //     }
+
+        public static int EvalMaterialsExternal(Board board, bool isWhitePerspective)
 		{
 			if (isWhitePerspective)
 			{
 				return
-				//	EvalMaterialsSIMD(
-				//	BitOperations.PopCount(board.bitboards[(int)Piece.WhitePawn]),
-				//	BitOperations.PopCount(board.bitboards[(int)Piece.WhiteKnight]),
-				//	BitOperations.PopCount(board.bitboards[(int)Piece.WhiteBishop]),
-				//	BitOperations.PopCount(board.bitboards[(int)Piece.WhiteRook]),
-				//	BitOperations.PopCount(board.bitboards[(int)Piece.WhiteQueen]),
-				//	BitOperations.PopCount(board.bitboards[(int)Piece.BlackPawn]),
-				//	BitOperations.PopCount(board.bitboards[(int)Piece.BlackKnight]),
-				//	BitOperations.PopCount(board.bitboards[(int)Piece.BlackBishop]),
-				//	BitOperations.PopCount(board.bitboards[(int)Piece.BlackRook]),
-				//	BitOperations.PopCount(board.bitboards[(int)Piece.BlackQueen])
-				//);
-				board.materialDelta;
-			}
+				board.materialDelta + EvalKingSafety(board, true, board.bitboards[(int)Piece.WhiteKing], board.bitboards[(int)Piece.BlackKing]);
+            }
 			else
 			{
 				return
-					//EvalMaterialsSIMD(
-					//BitOperations.PopCount(board.bitboards[(int)Piece.BlackPawn]),
-					//BitOperations.PopCount(board.bitboards[(int)Piece.BlackKnight]),
-					//BitOperations.PopCount(board.bitboards[(int)Piece.BlackBishop]),
-					//BitOperations.PopCount(board.bitboards[(int)Piece.BlackRook]),
-					//BitOperations.PopCount(board.bitboards[(int)Piece.BlackQueen]),
-					//BitOperations.PopCount(board.bitboards[(int)Piece.WhitePawn]),
-					//BitOperations.PopCount(board.bitboards[(int)Piece.WhiteKnight]),
-					//BitOperations.PopCount(board.bitboards[(int)Piece.WhiteBishop]),
-					//BitOperations.PopCount(board.bitboards[(int)Piece.WhiteRook]),
-					//BitOperations.PopCount(board.bitboards[(int)Piece.WhiteQueen])
-				//);
-				-board.materialDelta;
-			}
+				(-board.materialDelta) + EvalKingSafety(board, false, board.bitboards[(int)Piece.BlackKing], board.bitboards[(int)Piece.WhiteKing]);
+            }
 		}
 		
 		public static int EvalMatAndPST(Board board, bool isWhitePerspective)
@@ -385,19 +398,6 @@ namespace ChessC_
 			{
 				return
 						   board.materialDelta
-						  // EvalMaterialsSIMD(
-								//BitOperations.PopCount(board.bitboards[(int)Piece.WhitePawn]),
-								//BitOperations.PopCount(board.bitboards[(int)Piece.WhiteKnight]),
-								//BitOperations.PopCount(board.bitboards[(int)Piece.WhiteBishop]),
-								//BitOperations.PopCount(board.bitboards[(int)Piece.WhiteRook]),
-								//BitOperations.PopCount(board.bitboards[(int)Piece.WhiteQueen]),
-								//BitOperations.PopCount(board.bitboards[(int)Piece.BlackPawn]),
-								//BitOperations.PopCount(board.bitboards[(int)Piece.BlackKnight]),
-								//BitOperations.PopCount(board.bitboards[(int)Piece.BlackBishop]),
-								//BitOperations.PopCount(board.bitboards[(int)Piece.BlackRook]),
-								//BitOperations.PopCount(board.bitboards[(int)Piece.BlackQueen])
-						  // );
-
 					+ EvalKnight(board.bitboards[(int)Piece.WhiteKnight], board.bitboards[(int)Piece.BlackKnight], true, 0)
 					   + EvalPawn(board.bitboards[(int)Piece.WhitePawn], board.bitboards[(int)Piece.BlackPawn], true, 0)
 					   + EvalKing(board.bitboards[(int)Piece.WhiteKing], board.bitboards[(int)Piece.BlackKing], true, 0)
@@ -410,18 +410,6 @@ namespace ChessC_
 			{
 				return 
 					-board.materialDelta
-					  //+= EvalMaterialsSIMD(
-						 //  BitOperations.PopCount(board.bitboards[(int)Piece.BlackPawn]),
-						 //  BitOperations.PopCount(board.bitboards[(int)Piece.BlackKnight]),
-						 //  BitOperations.PopCount(board.bitboards[(int)Piece.BlackBishop]),
-						 //  BitOperations.PopCount(board.bitboards[(int)Piece.BlackRook]),
-						 //  BitOperations.PopCount(board.bitboards[(int)Piece.BlackQueen]),
-						 //  BitOperations.PopCount(board.bitboards[(int)Piece.WhitePawn]),
-						 //  BitOperations.PopCount(board.bitboards[(int)Piece.WhiteKnight]),
-						 //  BitOperations.PopCount(board.bitboards[(int)Piece.WhiteBishop]),
-						 //  BitOperations.PopCount(board.bitboards[(int)Piece.WhiteRook]),
-						 //  BitOperations.PopCount(board.bitboards[(int)Piece.WhiteQueen])
-					  //);
 					+ EvalKnight(board.bitboards[(int)Piece.BlackKnight], board.bitboards[(int)Piece.WhiteKnight], false, 0)
 					   + EvalPawn(board.bitboards[(int)Piece.BlackPawn], board.bitboards[(int)Piece.WhitePawn], false, 0)
 					   + EvalKing(board.bitboards[(int)Piece.BlackKing], board.bitboards[(int)Piece.WhiteKing], false, 0)
@@ -454,15 +442,15 @@ namespace ChessC_
 		}
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
-		private static int EvalPawn(ulong fP, ulong eP, bool isWhite, int phase) => EvalPiecePST_SIMD(fP, eP, isWhite, WPawnPST, phase);
+		private static int EvalPawn(ulong fP, ulong eP, bool isWhite, int phase) => EvalPiecePST(fP, eP, isWhite, WPawnPST, phase);
 		[MethodImpl(MethodImplOptions.NoInlining)]
-		private static int EvalKnight(ulong fN, ulong eN, bool isWhite, int phase) => EvalPiecePST_SIMD(fN, eN, isWhite, WKnightPST, phase);
+		private static int EvalKnight(ulong fN, ulong eN, bool isWhite, int phase) => EvalPiecePST(fN, eN, isWhite, WKnightPST, phase);
 		[MethodImpl(MethodImplOptions.NoInlining)]
-		private static int EvalBishop(ulong fB, ulong eB, bool isWhite, int phase) => EvalPiecePST_SIMD(fB, eB, isWhite, WBishopPST, phase);
+		private static int EvalBishop(ulong fB, ulong eB, bool isWhite, int phase) => EvalPiecePST(fB, eB, isWhite, WBishopPST, phase);
 		[MethodImpl(MethodImplOptions.NoInlining)]
-		private static int EvalQueen(ulong fQ, ulong eQ, bool isWhite, int phase) => EvalPiecePST_SIMD(fQ, eQ, isWhite, WQueenPST, phase);
+		private static int EvalQueen(ulong fQ, ulong eQ, bool isWhite, int phase) => EvalPiecePST(fQ, eQ, isWhite, WQueenPST, phase);
 		[MethodImpl(MethodImplOptions.NoInlining)]
-		private static int EvalRook(ulong fR, ulong eR, bool isWhite, int phase) => EvalPiecePST_SIMD(fR, eR, isWhite, WRookPST, phase);
+		private static int EvalRook(ulong fR, ulong eR, bool isWhite, int phase) => EvalPiecePST(fR, eR, isWhite, WRookPST, phase);
 		[MethodImpl(MethodImplOptions.NoInlining)]
 		private static int EvalKing(ulong fK, ulong eK, bool isWhite, int phase)
 		{
@@ -596,6 +584,7 @@ namespace ChessC_
                 }
             }
 
+
             // Process friendly pieces: invert sign if black
             var bitsF = f;
 			Process(ref bitsF, invert: !isWhite, mirror: false);
@@ -606,6 +595,36 @@ namespace ChessC_
 
 			return total;
 		}
+
+        private static int EvalPiecePST(ulong f, ulong e, bool isWhite, int[] pst, int phase)
+        {
+            int total = 0;
+            int offset = phase * 64;
+
+            // Friendly pieces
+            ulong bitsF = f;
+            while (bitsF != 0)
+            {
+                int sq = BitOperations.TrailingZeroCount(bitsF);
+                bitsF &= bitsF - 1;
+                int idx = sq;
+                int v = pst[offset + idx];
+                total += isWhite ? v : -v;
+            }
+
+            // Enemy pieces (mirror the square)
+            ulong bitsE = e;
+            while (bitsE != 0)
+            {
+                int sq = BitOperations.TrailingZeroCount(bitsE);
+                bitsE &= bitsE - 1;
+                int idx = MirrorIndex[sq];
+                int v = pst[offset + idx];
+                total += isWhite ? -v : v;
+            }
+
+            return total;
+        }
 
         private static readonly byte[] MirrorIndex = new byte[64]
 			{

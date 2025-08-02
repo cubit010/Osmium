@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace ChessC_
+namespace Osmium
 {
     using System;
     using System.Diagnostics;

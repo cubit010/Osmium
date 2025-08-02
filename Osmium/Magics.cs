@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
 
-namespace ChessC_
+namespace Osmium
 {
     public static class Magics
     {

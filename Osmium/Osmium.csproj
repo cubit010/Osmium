@@ -5,8 +5,8 @@
 		<TargetFramework>net8.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<AssemblyName>ChessC#</AssemblyName>
-		<RootNamespace>ChessC_</RootNamespace>
+		<AssemblyName>Osmium</AssemblyName>
+		<RootNamespace>Osmium</RootNamespace>
 		<OutputType>Exe</OutputType>
 		<PlatformTarget>AnyCPU</PlatformTarget>
 	</PropertyGroup>

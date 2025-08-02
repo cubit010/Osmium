@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 
-namespace ChessC_
+namespace Osmium
 {
     public class MoveFiltering
     {

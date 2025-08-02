@@ -3,7 +3,7 @@ using System.ComponentModel;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
-namespace ChessC_
+namespace Osmium
 {
 	// Helper struct to save board state for undo
 	struct BoardState
@@ -193,6 +193,11 @@ namespace ChessC_
         // Applies a move and pushes state for undo
         public UndoInfo MakeSearchMove(Board board, Move move)
 		{
+            if (board.bitboards[5] == 0 && board.bitboards[11] == 0)
+            {
+                // No pieces on the board, cannot make a move
+                throw new InvalidOperationException("bad board, king missing.");
+            }
             UndoInfo undo = new()
             {
                 PreviousCastlingRights = board.castlingRights,
@@ -311,9 +316,24 @@ namespace ChessC_
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ApplyMoveInternal(Move move)
         {
+            if (move.From == Square.None || move.To == Square.None) { Console.Write("null move"); throw new Exception(move.ToString()); }
+            if (this.bitboards[5] == 0 && this.bitboards[11] == 0)
+            {
+                // No pieces on the board, cannot make a move
+                throw new InvalidOperationException("bad board, king missing.");
+            }
+
             int fromIdx = (int)move.From;
             int toIdx = (int)move.To;
             int moved = (int)move.PieceMoved;
+
+
+            if (fromIdx < 0 || fromIdx >= 64)
+                throw new Exception($"Invalid fromIdx: {fromIdx} in move {move}");
+            if (toIdx < 0 || toIdx >= 64)
+                throw new Exception($"Invalid toIdx: {toIdx} in move {move}, piece moved: {move.PieceMoved}");
+            if (moved < 0 || moved >= bitboards.Length)
+                throw new Exception($"Invalid moved: {moved} in move {move}");
 
             ulong fromMask = 1UL << fromIdx;
             ulong toMask = 1UL << toIdx;
@@ -460,19 +480,6 @@ namespace ChessC_
             occupancies[(int)Color.Black] = black;
             occupancies[2] = white | black;
         }
-        //public Board Clone() { 
-        //    var newBoard = new Board
-        //    {
-        //        bitboards = (ulong[])this.bitboards.Clone(),
-        //        occupancies = (ulong[])this.occupancies.Clone(),
-        //        sideToMove = this.sideToMove,
-        //        castlingRights = this.castlingRights,
-        //        enPassantSquare = this.enPassantSquare,
-        //        halfmoveClock = this.halfmoveClock,
-        //        fullmoveNumber = this.fullmoveNumber,
-        //        zobristKey = this.zobristKey
-        //    };
-        //    return newBoard;
-        //}
+
     }
 }

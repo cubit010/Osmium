@@ -2,13 +2,17 @@
 using System.Globalization;
 using System.Text;
 
-namespace ChessC_
+namespace Osmium
 {
     /// <summary>
     /// Utility class for parsing and generating FEN (Forsyth–Edwards Notation) strings.
     /// </summary>
     public static class Fen
     {
+        internal static void LoadStartPos(Board board)
+        {
+            LoadFEN(board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        }
         /// <summary>
         /// Loads a FEN string into the given board, resetting all state.
         /// </summary>

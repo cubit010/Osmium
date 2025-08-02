@@ -1,5 +1,5 @@
 ﻿
-namespace ChessC_
+namespace Osmium
 {
 	/// <summary>
 	/// Zobrist hashing constants and utilities for the Chess engine.

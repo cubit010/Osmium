@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace ChessC_
+namespace Osmium
 {
     internal static class MoveFilterDifferer
     {

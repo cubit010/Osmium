@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Numerics;
 
-namespace ChessC_
+namespace Osmium
 {
     internal static class SpecialMoveGen
     {
@@ -15,41 +15,36 @@ namespace ChessC_
         // Generate capture moves into span
         public static void GenerateCaptureMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
         {
-
             ulong enemyOcc = board.occupancies[isWhite ? (int)Color.Black : (int)Color.White];
             ulong occ = board.occupancies[2] & ~board.bitboards[isWhite ? 11 : 5];
-            enemyOcc &= ~board.bitboards[isWhite ? 11 : 5];
+            // Exclude enemy king from capture targets
+            ulong enemyKing = board.bitboards[isWhite ? (int)Piece.BlackKing : (int)Piece.WhiteKing];
+            enemyOcc &= ~enemyKing;
 
             ulong pawns = board.bitboards[(int)(isWhite ? Piece.WhitePawn : Piece.BlackPawn)];
+
+
+            // Pawn captures (unchanged for clarity and correctness)
             if (isWhite)
             {
                 ulong leftCaps = (pawns & ~FileA) << 7 & enemyOcc;
                 ulong rightCaps = (pawns & ~FileH) << 9 & enemyOcc;
-                //ulong promoLeft = leftCaps & Rank8;
-                //ulong promoRight = rightCaps & Rank8;
+
                 ulong normalLeft = leftCaps & ~Rank8;
                 ulong normalRight = rightCaps & ~Rank8;
 
-                //foreach (int to in BitIter(promoLeft))
-                //    foreach (Piece promo in new[] { Piece.WhiteQueen, Piece.WhiteRook, Piece.WhiteBishop, Piece.WhiteKnight })
-                //        moves[count++] = new Move((Square)(to - 7), (Square)to, Piece.WhitePawn,
-                //                                  MoveGen.FindCapturedPiece(board, (Square)to, true),
-                //                                  MoveFlags.Promotion | MoveFlags.Capture, promo);
-
-                //foreach (int to in BitIter(promoRight))
-                //    foreach (Piece promo in new[] { Piece.WhiteQueen, Piece.WhiteRook, Piece.WhiteBishop, Piece.WhiteKnight })
-                //        moves[count++] = new Move((Square)(to - 9), (Square)to, Piece.WhitePawn,
-                //                                  MoveGen.FindCapturedPiece(board, (Square)to, true),
-                //                                  MoveFlags.Promotion | MoveFlags.Capture, promo);
-
                 foreach (int to in BitIter(normalLeft))
-                    moves[count++] = new Move((Square)(to - 7), (Square)to, Piece.WhitePawn,
-                                              MoveGen.FindCapturedPiece(board, (Square)to, true),
-                                              MoveFlags.Capture);
+                {
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, true);
+                    if (captured == Piece.BlackKing) continue;
+                    moves[count++] = new Move((Square)(to - 7), (Square)to, Piece.WhitePawn, captured, MoveFlags.Capture);
+                }
                 foreach (int to in BitIter(normalRight))
-                    moves[count++] = new Move((Square)(to - 9), (Square)to, Piece.WhitePawn,
-                                              MoveGen.FindCapturedPiece(board, (Square)to, true),
-                                              MoveFlags.Capture);
+                {
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, true);
+                    if (captured == Piece.BlackKing) continue;
+                    moves[count++] = new Move((Square)(to - 9), (Square)to, Piece.WhitePawn, captured, MoveFlags.Capture);
+                }
 
                 if (board.enPassantSquare != Square.None)
                 {
@@ -64,31 +59,22 @@ namespace ChessC_
             {
                 ulong leftCaps = (pawns & ~FileH) >> 7 & enemyOcc;
                 ulong rightCaps = (pawns & ~FileA) >> 9 & enemyOcc;
-                //ulong promoLeft = leftCaps & Rank1;
-                //ulong promoRight = rightCaps & Rank1;
+
                 ulong normalLeft = leftCaps & ~Rank1;
                 ulong normalRight = rightCaps & ~Rank1;
 
-                //foreach (int to in BitIter(promoLeft))
-                //    foreach (Piece promo in new[] { Piece.BlackQueen, Piece.BlackRook, Piece.BlackBishop, Piece.BlackKnight })
-                //        moves[count++] = new Move((Square)(to + 7), (Square)to, Piece.BlackPawn,
-                //                                  MoveGen.FindCapturedPiece(board, (Square)to, false),
-                //                                  MoveFlags.Promotion | MoveFlags.Capture, promo);
-
-                //foreach (int to in BitIter(promoRight))
-                //    foreach (Piece promo in new[] { Piece.BlackQueen, Piece.BlackRook, Piece.BlackBishop, Piece.BlackKnight })
-                //        moves[count++] = new Move((Square)(to + 9), (Square)to, Piece.BlackPawn,
-                //                                  MoveGen.FindCapturedPiece(board, (Square)to, false),
-                //                                  MoveFlags.Promotion | MoveFlags.Capture, promo);
-
                 foreach (int to in BitIter(normalLeft))
-                    moves[count++] = new Move((Square)(to + 7), (Square)to, Piece.BlackPawn,
-                                              MoveGen.FindCapturedPiece(board, (Square)to, false),
-                                              MoveFlags.Capture);
+                {
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, false);
+                    if (captured == Piece.WhiteKing) continue;
+                    moves[count++] = new Move((Square)(to + 7), (Square)to, Piece.BlackPawn, captured, MoveFlags.Capture);
+                }
                 foreach (int to in BitIter(normalRight))
-                    moves[count++] = new Move((Square)(to + 9), (Square)to, Piece.BlackPawn,
-                                              MoveGen.FindCapturedPiece(board, (Square)to, false),
-                                              MoveFlags.Capture);
+                {
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, false);
+                    if (captured == Piece.WhiteKing) continue;
+                    moves[count++] = new Move((Square)(to + 9), (Square)to, Piece.BlackPawn, captured, MoveFlags.Capture);
+                }
 
                 if (board.enPassantSquare != Square.None)
                 {
@@ -100,58 +86,92 @@ namespace ChessC_
                 }
             }
 
-            ulong knights = board.bitboards[(int)(isWhite ? Piece.WhiteKnight : Piece.BlackKnight)];
-            while (knights != 0)
+            // --- Optimization: Cache bitboards and avoid repeated calculations ---
+            ulong knightBB = board.bitboards[(int)(isWhite ? Piece.WhiteKnight : Piece.BlackKnight)];
+            ulong bishopBB = board.bitboards[(int)(isWhite ? Piece.WhiteBishop : Piece.BlackBishop)];
+            ulong rookBB = board.bitboards[(int)(isWhite ? Piece.WhiteRook : Piece.BlackRook)];
+            ulong queenBB = board.bitboards[(int)(isWhite ? Piece.WhiteQueen : Piece.BlackQueen)];
+            ulong kingBB = board.bitboards[(int)(isWhite ? Piece.WhiteKing : Piece.BlackKing)];
+
+            // Knights
+            for (ulong knights = knightBB; knights != 0;)
             {
                 int from = BitOperations.TrailingZeroCount(knights);
                 knights &= knights - 1;
                 ulong attacks = MoveTables.KnightMoves[from] & enemyOcc;
-                foreach (int to in BitIter(attacks))
+                // Unroll BitIter for performance
+                for (ulong att = attacks; att != 0;)
+                {
+                    int to = BitOperations.TrailingZeroCount(att);
+                    att &= att - 1;
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, isWhite);
+                    if (captured == (isWhite ? Piece.BlackKing : Piece.WhiteKing)) continue;
                     moves[count++] = new Move((Square)from, (Square)to,
                                               isWhite ? Piece.WhiteKnight : Piece.BlackKnight,
-                                              MoveGen.FindCapturedPiece(board, (Square)to, isWhite),
+                                              captured,
                                               MoveFlags.Capture);
+                }
             }
 
-            ulong king = board.bitboards[(int)(isWhite ? Piece.WhiteKing : Piece.BlackKing)];
-            int kfrom = BitOperations.TrailingZeroCount(king);
+            // King
+            int kfrom = BitOperations.TrailingZeroCount(kingBB);
             ulong kAtt = MoveTables.KingMoves[kfrom] & enemyOcc;
-            foreach (int to in BitIter(kAtt))
+            for (ulong att = kAtt; att != 0;)
+            {
+                int to = BitOperations.TrailingZeroCount(att);
+                att &= att - 1;
+                Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, isWhite);
+                if (captured == (isWhite ? Piece.BlackKing : Piece.WhiteKing)) continue;
                 moves[count++] = new Move((Square)kfrom, (Square)to,
                                           isWhite ? Piece.WhiteKing : Piece.BlackKing,
-                                          MoveGen.FindCapturedPiece(board, (Square)to, isWhite),
+                                          captured,
                                           MoveFlags.Capture);
-
-            ulong diag = (board.bitboards[(int)(isWhite ? Piece.WhiteBishop : Piece.BlackBishop)] |
-                          board.bitboards[(int)(isWhite ? Piece.WhiteQueen : Piece.BlackQueen)]);
-            while (diag != 0)
-            {
-                int from = BitOperations.TrailingZeroCount(diag);
-                diag &= diag - 1;
-                ulong att = Magics.GetBishopAttacks(from, occ) & enemyOcc;
-                foreach (int to in BitIter(att))
-                    moves[count++] = new Move((Square)from, (Square)to,
-                                              ((1UL << from) & board.bitboards[(int)(isWhite ? Piece.WhiteBishop : Piece.BlackBishop)]) != 0
-                                                ? (isWhite ? Piece.WhiteBishop : Piece.BlackBishop)
-                                                : (isWhite ? Piece.WhiteQueen : Piece.BlackQueen),
-                                              MoveGen.FindCapturedPiece(board, (Square)to, isWhite),
-                                              MoveFlags.Capture);
             }
 
-            ulong ortho = (board.bitboards[(int)(isWhite ? Piece.WhiteRook : Piece.BlackRook)] |
-                          board.bitboards[(int)(isWhite ? Piece.WhiteQueen : Piece.BlackQueen)]);
-            while (ortho != 0)
+            // Bishops and Queens (diagonals)
+            ulong diag = bishopBB | queenBB;
+            for (ulong d = diag; d != 0;)
             {
-                int from = BitOperations.TrailingZeroCount(ortho);
-                ortho &= ortho - 1;
-                ulong att = Magics.GetRookAttacks(from, occ) & enemyOcc;
-                foreach (int to in BitIter(att))
+                int from = BitOperations.TrailingZeroCount(d);
+                d &= d - 1;
+                // --- Optimization: Inline Magics.GetBishopAttacks if possible, or cache results if called repeatedly with same args ---
+                ulong att = Magics.GetBishopAttacks(from, occ) & enemyOcc;
+                for (ulong a = att; a != 0;)
+                {
+                    int to = BitOperations.TrailingZeroCount(a);
+                    a &= a - 1;
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, isWhite);
+                    if (captured == (isWhite ? Piece.BlackKing : Piece.WhiteKing)) continue;
                     moves[count++] = new Move((Square)from, (Square)to,
-                                              ((1UL << from) & board.bitboards[(int)(isWhite ? Piece.WhiteRook : Piece.BlackRook)]) != 0
+                                              ((1UL << from) & bishopBB) != 0
+                                                ? (isWhite ? Piece.WhiteBishop : Piece.BlackBishop)
+                                                : (isWhite ? Piece.WhiteQueen : Piece.BlackQueen),
+                                              captured,
+                                              MoveFlags.Capture);
+                }
+            }
+
+            // Rooks and Queens (orthogonals)
+            ulong ortho = rookBB | queenBB;
+            for (ulong r = ortho; r != 0;)
+            {
+                int from = BitOperations.TrailingZeroCount(r);
+                r &= r - 1;
+                // --- Optimization: Inline Magics.GetRookAttacks if possible, or cache results if called repeatedly with same args ---
+                ulong att = Magics.GetRookAttacks(from, occ) & enemyOcc;
+                for (ulong a = att; a != 0;)
+                {
+                    int to = BitOperations.TrailingZeroCount(a);
+                    a &= a - 1;
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, isWhite);
+                    if (captured == (isWhite ? Piece.BlackKing : Piece.WhiteKing)) continue;
+                    moves[count++] = new Move((Square)from, (Square)to,
+                                              ((1UL << from) & rookBB) != 0
                                                 ? (isWhite ? Piece.WhiteRook : Piece.BlackRook)
                                                 : (isWhite ? Piece.WhiteQueen : Piece.BlackQueen),
-                                              MoveGen.FindCapturedPiece(board, (Square)to, isWhite),
+                                              captured,
                                               MoveFlags.Capture);
+                }
             }
         }
 
@@ -172,6 +192,7 @@ namespace ChessC_
                 int from = to - fwd;
                 foreach (Piece p in promos)
                 {
+
                     var mv = new Move((Square)from, (Square)to,
                                       isWhite ? Piece.WhitePawn : Piece.BlackPawn,
                                       Piece.None, MoveFlags.Promotion, p);
@@ -196,6 +217,7 @@ namespace ChessC_
                     if (cap == Piece.WhiteKing || cap == Piece.BlackKing) continue;
                     foreach (Piece p in promos)
                     {
+
                         var mv = new Move((Square)from, (Square)to,
                                           isWhite ? Piece.WhitePawn : Piece.BlackPawn,
                                           cap, MoveFlags.Promotion | MoveFlags.Capture, p);
@@ -207,6 +229,7 @@ namespace ChessC_
                     }
                 }
             }
+
         }
 
         private static IEnumerable<int> BitIter(ulong bb)

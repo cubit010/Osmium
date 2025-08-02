@@ -1,9 +1,10 @@
 ﻿using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
-namespace ChessC_
+namespace Osmium
 {
     internal static class MoveGen
     {
@@ -261,7 +262,7 @@ namespace ChessC_
 
             return false; // No legal escape
         }
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool CanCaptureCheckingPiece(Board board, bool isWhiteToMove, int square)
         {
         //ulong occ;
@@ -432,7 +433,7 @@ namespace ChessC_
             return false;
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void GenSemiLegal(Board board, Span<Move> moves, ref int count, bool isWhite)
         {
             PieceMoves.GenerateKingMoves(board, moves, ref count, isWhite);
@@ -442,6 +443,12 @@ namespace ChessC_
             GenerateCastles(board, moves, ref count, isWhite);
         }
 
+
+        private static void CopyToSpan(Span<Move> dest, Move[] src, int srcCount, ref int destCount)
+        {
+            for (int i = 0; i < srcCount; i++)
+                dest[destCount++] = src[i];
+        }
 
         private static readonly Move[] _moveBuffer = new Move[256];
 
@@ -460,18 +467,7 @@ namespace ChessC_
                 result[count++] = tmp[i];
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
-        //public static void FilteredLegalWithoutFlag_Old(Board board, Span<Move> result, ref int count, bool isWhite)
-        //{
-        //    Span<Move> tmp = stackalloc Move[256];
-        //    int tmpCount = 0;
 
-        //    GenSemiLegal(board, tmp, ref tmpCount, isWhite);
-        //    //MoveFiltering.
-        //        FilterMoves(board, tmp, ref tmpCount, isWhite);
-
-        //    for (int i = 0; i < tmpCount; i++)
-        //        result[count++] = tmp[i];
-        //}
 
         public static void FilteredLegalWithoutFlag(Board board, Span<Move> result, ref int count, bool isWhite)
         {
@@ -485,33 +481,6 @@ namespace ChessC_
                 result[count++] = tmp[i];
         }
 
-        //private static void FilterMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
-        //{
-        //    int legalCount = 0;
-
-        //    for (int i = 0; i < count; i++)
-        //    {
-        //        Move move = moves[i];
-        //        if (!SimMoveCheck(move, board, isWhite))
-        //        {
-        //            moves[legalCount++] = move;
-        //        }
-        //    }
-
-        //    count = legalCount;
-        //}
-
-
-
-        //[MethodImpl(MethodImplOptions.NoInlining)]
-        //private static bool SimMoveCheck(Move move, Board board, bool isWhiteToMove)
-        //{
-        //    UndoInfo undo = board.MakeSearchMove(board, move);
-        //    int kingIdx = GetKingSquare(board, isWhiteToMove);
-        //    bool inCheck = IsSquareAttacked(board, kingIdx, isWhiteToMove);
-        //    board.UnmakeMove(move, undo);
-        //    return inCheck;
-        //}
 
         public static bool IsInCheck(Board board, bool isWhiteDefend)
         {
@@ -535,17 +504,21 @@ namespace ChessC_
         private const ulong Rank4 = 0x00000000FF000000;
         private const ulong Rank5 = 0x000000FF00000000;
 
-        internal static Piece FindCapturedPiece(Board board, Square sq, bool isWhite)
+        internal static Piece FindCapturedPiece(Board board, Square sq, bool isWhiteCapturing)
         {
+
             ulong mask = 1UL << (int)sq;
-            int start = isWhite ? 6 : 0;
-            int end = isWhite ? 12 : 6;
+            int offset = isWhiteCapturing ? 6 : 0;
 
-            for (int i = start; i < end; i++)
-                if ((board.bitboards[i] & mask) != 0)
-                    return (Piece)i;
+            if ((board.bitboards[offset + 0] & mask) != 0) return (Piece)(offset + 0); // Pawn
+            if ((board.bitboards[offset + 1] & mask) != 0) return (Piece)(offset + 1); // Knight
+            if ((board.bitboards[offset + 2] & mask) != 0) return (Piece)(offset + 2); // Bishop
+            if ((board.bitboards[offset + 3] & mask) != 0) return (Piece)(offset + 3); // Rook
+            if ((board.bitboards[offset + 4] & mask) != 0) return (Piece)(offset + 4); // Queen
+            if ((board.bitboards[offset + 5] & mask) != 0) return (Piece)(offset + 5); // King 
 
-            return Piece.None;
+            return Piece.None; // Shouldn't reach here
+
         }
         internal static Piece FindPieceAt(Board board, int sq)
         {

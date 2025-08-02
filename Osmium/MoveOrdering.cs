@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
-namespace ChessC_
+namespace Osmium
 {
 	internal static class MoveOrdering
 	{
@@ -17,7 +17,8 @@ namespace ChessC_
 
 
 
-		private static readonly int[] PieceValues = { 100, 320, 330, 500, 900, 20000 };
+		private static readonly int[] PieceValues = {	100, 320, 330, 500, 900, 20000, 
+														100, 320, 330, 500, 900, 20000 };
 		private static readonly int[,] MVVLVA = new int[6, 6]
 		{
 			{   900,   700,   700,   500,   100,  -9000 },
@@ -71,11 +72,11 @@ namespace ChessC_
 
 			//int remainingCount = count - insertPos;
 			//if (remainingCount <= 1)
-				//return;
+			//	return;
 
 			// 2) Score remaining moves
 			for (int i = 0; i < count; i++)
-				scores[i] = ComputeScore(moves[insertPos + i], pvMove, killer0, killer1);
+				scores[i] = ComputeScore(moves[insertPos + i], pvMove, killer0, killer1, board);
 
 			// 3) Sort remaining moves
 		   int pow2 = HighestPowerOfTwoLE(count);
@@ -132,7 +133,7 @@ namespace ChessC_
 
 		/// <summary>Computes move score, with PV/Killer boosts.</summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-		private static int ComputeScore(Move move, Move? pv, Move? k0, Move? k1)
+		private static int ComputeScore(Move move, Move? pv, Move? k0, Move? k1, Board board)
 		{
 			if (pv.HasValue && move.Equals(pv.Value)) return int.MaxValue;
 			if ((k0.HasValue && move.Equals(k0.Value)) ||
@@ -141,6 +142,7 @@ namespace ChessC_
 
 			if (move.PieceCaptured != Piece.None)
 				return 100_000 + MVVLVA[(int)move.PieceMoved % 6, (int)move.PieceCaptured % 6];
+                    //SEE(board, move);
 			if ((move.Flags & MoveFlags.Promotion) != 0)
 				return 90_000 + (int)move.PromotionPiece * 100;
 			return 50_000 + historyHeuristic[(int)move.From, (int)move.To];
@@ -240,18 +242,112 @@ namespace ChessC_
 				historyHeuristic[f, t] += depth * depth;
 		}
 
-		public static int SEE(Board board, Move move)
-		{
-			int capturedValue = move.PieceCaptured != Piece.None ? PieceValues[((int)move.PieceCaptured) % 6] : 0;
-			var undo = board.MakeSearchMove(board, move);
-			Color opp = board.sideToMove == Color.White ? Color.Black : Color.White;
-			Move? rec = FindLeastValuableAttacker(board, move.To, opp);
-			int score = rec == null ? capturedValue : capturedValue - SEE(board, rec.Value);
-			board.UnmakeMove(move, undo);
-			return score;
-		}
+        public static int SEE(Board board, Move move)
+        {
+            int to = (int)move.To;
+            int stm = (int)board.sideToMove; // 0=White, 1=Black
+            int[] gain = new int[32];
+            int depth = 0;
 
-		private static Move? FindLeastValuableAttacker(Board board, Square target, Color color)
+            // Local copies
+            ulong[] bbs = board.bitboards;
+            ulong occ = board.occupancies[2];
+
+            // Piece values
+            int[] values = PieceValues;
+
+            // Who is on move: 0=white, 1=black
+            int side = stm;
+
+            // Initial gain: value of captured piece
+            gain[depth++] = move.PieceCaptured != Piece.None ? values[(int)move.PieceCaptured % 6] : 0;
+
+            // Remove the attacking piece from the from square, add to the to square
+            ulong fromMask = 1UL << (int)move.From;
+            ulong toMask = 1UL << to;
+            int moving = (int)move.PieceMoved;
+
+            ulong[] attackers = new ulong[2];
+            attackers[0] = GetAttackers(board, to, Color.White, occ);
+            attackers[1] = GetAttackers(board, to, Color.Black, occ);
+
+            // Remove the moving piece from its from square in attackers and occ
+            occ &= ~fromMask;
+            attackers[side] &= ~fromMask;
+
+            // Remove the captured piece from the to square in occ (if any)
+            if (move.PieceCaptured != Piece.None)
+                occ &= ~toMask;
+
+            // Now simulate the sequence of captures
+            int lastPiece = moving;
+            while (true)
+            {
+                // Find the least valuable attacker for the current side
+                int bestPiece = -1;
+                int bestValue = int.MaxValue;
+                ulong att = attackers[side] & occ;
+                for (int p = 0; p < 6; p++)
+                {
+                    ulong bb = bbs[p + 6 * side] & att;
+                    if (bb != 0)
+                    {
+                        int sq = BitOperations.TrailingZeroCount(bb);
+                        if (values[p] < bestValue)
+                        {
+                            bestValue = values[p];
+                            bestPiece = p + 6 * side;
+                        }
+                    }
+                }
+                if (bestPiece == -1) break;
+
+                // Add gain for this capture
+                gain[depth] = values[bestPiece % 6] - gain[depth - 1];
+                depth++;
+
+                // Remove this piece from occ and attackers
+                ulong pieceMask = bbs[bestPiece] & occ;
+                occ &= ~pieceMask;
+                attackers[side] &= ~pieceMask;
+
+                // Switch side
+                side = 1 - side;
+            }
+
+            // Negamax the gain array
+            for (int i = depth - 1; i > 0; i--)
+                gain[i - 1] = -Math.Max(-gain[i - 1], gain[i]);
+
+            return gain[0];
+        }
+
+        // Helper: get all attackers to a square for a color
+        private static ulong GetAttackers(Board board, int sq, Color color, ulong occ)
+        {
+            ulong attackers = 0UL;
+            if (color == Color.White)
+            {
+                attackers |= board.bitboards[(int)Piece.WhitePawn] & MoveTables.PawnCaptures[0, 0, sq];
+                attackers |= board.bitboards[(int)Piece.WhiteKnight] & MoveTables.KnightMoves[sq];
+                attackers |= board.bitboards[(int)Piece.WhiteBishop] & Magics.GetBishopAttacks(sq, occ);
+                attackers |= board.bitboards[(int)Piece.WhiteRook] & Magics.GetRookAttacks(sq, occ);
+                attackers |= board.bitboards[(int)Piece.WhiteQueen] & (Magics.GetBishopAttacks(sq, occ) | Magics.GetRookAttacks(sq, occ));
+                attackers |= board.bitboards[(int)Piece.WhiteKing] & MoveTables.KingMoves[sq];
+            }
+            else
+            {
+                attackers |= board.bitboards[(int)Piece.BlackPawn] & MoveTables.PawnCaptures[1, 0, sq];
+                attackers |= board.bitboards[(int)Piece.BlackKnight] & MoveTables.KnightMoves[sq];
+                attackers |= board.bitboards[(int)Piece.BlackBishop] & Magics.GetBishopAttacks(sq, occ);
+                attackers |= board.bitboards[(int)Piece.BlackRook] & Magics.GetRookAttacks(sq, occ);
+                attackers |= board.bitboards[(int)Piece.BlackQueen] & (Magics.GetBishopAttacks(sq, occ) | Magics.GetRookAttacks(sq, occ));
+                attackers |= board.bitboards[(int)Piece.BlackKing] & MoveTables.KingMoves[sq];
+            }
+            return attackers;
+        }
+
+        private static Move? FindLeastValuableAttacker(Board board, Square target, Color color)
 		{
 			Span<Move> buf = stackalloc Move[256];
 			int cnt = 0;

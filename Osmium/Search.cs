@@ -2,8 +2,9 @@
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using static System.Formats.Asn1.AsnWriter;
 
-namespace ChessC_
+namespace Osmium
 {
     /// <summary>
     /// Span-based search with fixed move-buffer isolation per depth
@@ -16,6 +17,9 @@ namespace ChessC_
         private const int MateScore = 1_000_000;
         private static readonly Move[,] killerMoves = new Move[MaxDepth + 1, 2];
         public static long NodesVisited;
+
+        //[ThreadStatic]
+        //private static Stack<Move> _searchStack = new Stack<Move>(MaxDepth);
 
         [ThreadStatic]
         private static Move[][] _moveBuffer = new Move[MaxDepth][];
@@ -49,7 +53,7 @@ namespace ChessC_
                     break;
 
                 NodesVisited = 0;
-                int window = 65 + 3 * depth;
+                int window = 75 + 3 * depth;
                 int alpha = lastScore - window;
                 int beta = lastScore + window;
                 int score;
@@ -70,7 +74,7 @@ namespace ChessC_
                 lastScore = score;
                 lastBest = bestMove;
                 iterStart.Stop();
-                Console.WriteLine($"Depth {depth,-2}: Nodes:{NodesVisited,-10} | Time: {iterStart.ElapsedMilliseconds,-6} ms | Best={MoveNotation.ToAlgebraicNotation(lastBest), 6} | NPS: {1000.0*NodesVisited/Math.Max(0.8, iterStart.ElapsedMilliseconds),12:F2}");
+                Console.WriteLine($"Depth {depth,-2}: Nodes:{NodesVisited,-10} | Time: {iterStart.ElapsedMilliseconds,-6} ms | Best={MoveNotation.ToAlgebraicNotation(lastBest), 6} | NPS: {1000.0*NodesVisited/Math.Max(0.8, iterStart.ElapsedMilliseconds),12:F2} | Eval: {(board.sideToMove == Color.Black ? -lastScore/100.0 : lastScore/100.0)}");
             }
 
             sw.Stop();
@@ -93,9 +97,12 @@ namespace ChessC_
             nullReseached = 0;
             return lastBest;
         }
-
+        
+        public static int currentDepth = 0;
         private static Move SearchAtDepth(Board board, TranspositionTable tt, int depth, int alpha, int beta, out int bestScore)
         {
+            ply = 0; // Reset ply for each search
+            currentDepth = depth;
             bool isWhite = board.sideToMove == Color.White;
             bestScore = int.MinValue;
             Move bestMove = default;
@@ -121,8 +128,14 @@ namespace ChessC_
             // Main search
             foreach (var mv in moves)
             {
+                //Console.WriteLine(MoveNotation.ToAlgebraicNotation(mv, moves));
+
                 var undo = board.MakeSearchMove(board, mv);
+                //_searchStack.Push(mv);    
+
                 int score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt);
+
+                //_searchStack.Pop();
                 board.UnmakeMove(mv, undo);
 
                 if (score > bestScore)
@@ -141,20 +154,36 @@ namespace ChessC_
         public static int researched = 0;
         public static int nullwindow = 0;
         public static int nullReseached = 0;
+ 
 
-        private static int PVS(Board board, int depth, int alpha, int beta, bool isWhite, TranspositionTable tt)
+        //public static int depthOn = 0;
+        public static int ply;
+        private static int PVS(Board board, int depth, int alpha, int beta, bool isWhite, TranspositionTable tt, bool hasReduced = false)
         {
+            ply++;
+            //PrintStack(_searchStack);
+            //Utils.PrintBoard(board);
+            //checkOverlap(board);
+
+            //Eval.TestPSTEvals(board, isWhite, 0);
+
             NodesVisited++;
 
-            if (depth == 0)//return Eval.EvalBoard(board, isWhite);
+            if (depth <= 0)
+            {
+                //Console.Out.WriteLine("d0:\t" + Fen.ToFEN(board));
+                ply--;
                 return Quiesce(board, alpha, beta, isWhite, 1);
-
+            }
             ulong key = board.zobristKey;
             int origAlpha = alpha;
 
+            // Use depth for TT probe
             if (tt.Probe(key, depth, alpha, beta, out int ttScore, out Move ttMove))
+            {
+                ply--;
                 return ttScore;
-
+            }
             int kingSq = MoveGen.GetKingSquare(board, isWhite);
             bool inCheck = MoveGen.IsSquareAttacked(board, kingSq, isWhite);
 
@@ -162,10 +191,14 @@ namespace ChessC_
             if (depth >= 3 && !inCheck && HasSufficientMaterial(board, isWhite))
             {
                 var undoNull = board.MakeNullMove();
-                int nullScore = -PVS(board, depth - (3 + depth * 2 / 9), -beta, -beta + 1, !isWhite, tt);
+                int R = 2 + ply/5; // Null move reduction, can be tuned
+                int nullScore = -PVS(board, depth - R, -beta, -beta + 1, !isWhite, tt);
                 board.UnmakeNullMove(undoNull);
                 if (nullScore >= beta)
+                {
+                    ply--;
                     return beta;
+                }
             }
 
 
@@ -174,25 +207,36 @@ namespace ChessC_
 
 
             // --- Generate legal moves ---
-            Span<Move> full = new Span<Move>(_moveBuffer[depth - 1]);
+            Span<Move> full = new Span<Move>(_moveBuffer[ply - 1]);
             int count = 0;
             MoveGen.FilteredLegalWithoutFlag(board, full, ref count, isWhite);
-            if (count == 0)
-                return inCheck ? -MateScore + (MaxDepth - depth) : 0;
-            Span<Move> moves = full.Slice(0, count);
 
-            MoveOrdering.OrderMoves(board, moves, ttMove, depth);
+            if (count == 0)
+            {
+                ply--;
+                return inCheck ? -MateScore + (MaxDepth - depth) : 0;
+            }
+            Span<Move> moves = full.Slice(0, count);
+            /**
+            foreach (Move move in moves)
+            {
+                Console.WriteLine(MoveNotation.ToAlgebraicNotation(move, moves));
+            }/**/
+            MoveOrdering.OrderMoves(board, moves, ttMove, ply);
 
             int best = int.MinValue;
             Move bestMove = default;
             int moveNum = 0;
 
-            int staticEval = isWhite? board.materialDelta : -board.materialDelta;
-
+            int staticEval = Eval.EvalMaterialsExternal(board, isWhite);//isWhite? board.materialDelta : -board.materialDelta;
+            int extension;
             foreach (var mv in moves)
             {
                 moveNum++;
-
+                extension = 0;
+                // Example: extend for checks, promotions, and optionally captures in the first few plies
+                if ((mv.Flags & (MoveFlags.Check | MoveFlags.Promotion)) != 0)
+                    extension = 1;
 
                 // --- Late Move Pruning (LMP) ---
                 // Only for quiet moves, not in check, not first few moves, and at low depth
@@ -200,35 +244,36 @@ namespace ChessC_
                     !inCheck &&
                     mv.PieceCaptured == Piece.None &&
                     (mv.Flags & MoveFlags.Promotion) == 0 &&
-                    moveNum > 3 + depth*8/9) // threshold can be tuned
+                    moveNum > 4 + depth*3) // threshold can be tuned
                 {
                     continue; // Prune this late quiet move
                 }
 
-                
+
                 // --- Futility Pruning ---
                 if (depth == 2 &&
                     !inCheck &&
                     mv.PieceCaptured == Piece.None &&
                     (mv.Flags & MoveFlags.Promotion) == 0)
                 {
-                    
+
                     //----------------------------------------
-                    int futilityMargin = 180; // tuning needed
-                    //----------------------------------------
+                    int futilityMargin = 190; // tuning needed
+                                              //----------------------------------------
 
                     if (staticEval + futilityMargin <= alpha)
                         continue; // Prune this move
                 }
 
-                int LmrSafetyMargin = 40; // tuning needed
-
-                bool isKiller = mv.Equals(killerMoves[depth, 0]) || mv.Equals(killerMoves[depth, 1]);
+                int LmrSafetyMargin = 30; // tuning needed
+               // Console.WriteLine("ply: " + ply);
+                bool isKiller = mv.Equals(killerMoves[ply, 0]) || mv.Equals(killerMoves[ply, 1]);
 
                 bool isTTMove = mv.Equals(ttMove);
 
-                int safeMoves = 3 + depth / 2; // e.g. at depth 6, don't reduce first ~5
+                int safeMoves = 3; //+ (relativeDepth) *5/ 6; // e.g. at depth 6, don't reduce first ~5
                 bool canReduce =
+                    !hasReduced &&
                     depth >= 4 &&
                     moveNum > safeMoves &&
                     !inCheck &&
@@ -238,38 +283,52 @@ namespace ChessC_
                     !isTTMove &&
                     staticEval + LmrSafetyMargin <= alpha;
 
+
                 var undo = board.MakeSearchMove(board, mv);
+                //_searchStack.Push(mv);
+
                 int score;
 
                 if (moveNum == 1)
                 {
-                    score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt);
+                    score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt, hasReduced);
+
+
                 }
                 else if (canReduce)
                 {
                     reduced++;
-                    int R = 2 + depth / 7;
-                    score = -PVS(board, depth - R, -alpha - 1, -alpha, !isWhite, tt);
+                    int R = 2 + depth/6; // LMR reduction, can be tuned
+                    score = -PVS(board, depth - R, -alpha - 1, -alpha, !isWhite, tt, true);
+
+
                     if (score > alpha)
                     {
                         researched++;
-                        score = -PVS(board, depth - 1, -alpha - 1, -alpha, !isWhite, tt);
+                        score = -PVS(board, depth - 1, -alpha - 1, -alpha, !isWhite, tt, hasReduced);
+
+
+
                         if (score > alpha && score < beta)
-                            score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt);
+                            score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt, hasReduced);
+
                     }
                 }
                 else
                 {
                     nullwindow++;
-                    score = -PVS(board, depth - 1, -alpha - 1, -alpha, !isWhite, tt);
-                    if (score > alpha && score < beta) { 
+                    score = -PVS(board, depth - 1, -alpha - 1, -alpha, !isWhite, tt, hasReduced);
+
+                    if (score > alpha && score < beta)
+                    {
                         nullReseached++;
-                        score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt);
+                        score = -PVS(board, depth - 1, -beta, -alpha, !isWhite, tt, hasReduced);
+
                     }
                 }
 
                 board.UnmakeMove(mv, undo);
-
+                //_searchStack.Pop();
                 if (score > best)
                 {
                     best = score;
@@ -282,30 +341,70 @@ namespace ChessC_
                     if (mv.PieceCaptured == Piece.None)
                     {
                         //below this
-                        if (!mv.Equals(killerMoves[depth, 0]))
+                        if (!mv.Equals(killerMoves[ply, 0]))
                         {
-                            killerMoves[depth, 1] = killerMoves[depth, 0];
-                            killerMoves[depth, 0] = mv;
+                            killerMoves[ply, 1] = killerMoves[ply, 0];
+                            killerMoves[ply, 0] = mv;
                         }
-                        MoveOrdering.RecordHistory(mv, depth);
+                        MoveOrdering.RecordHistory(mv, ply);
                     }
                     break;
                 }
             }
 
             NodeType flag = best <= origAlpha ? NodeType.UpperBound : best >= beta ? NodeType.LowerBound : NodeType.Exact;
+            // Use depth for TT store
             tt.Store(key, depth, best, bestMove, flag);
+
+            ply--;
             return best;
+        }
+        private static void PrintStack (Stack<Move> stack)
+        {
+            
+            foreach (var move in stack.Reverse())
+            {
+                Console.Write(MoveNotation.ToAlgebraicNotation(move) + "|\t");
+            }
+            Console.WriteLine();
+        }
+        //private static void OutputError(Board board, Move move)
+        //{
+        //    Console.WriteLine("Error in search: " + move);
+        //    Console.WriteLine("FEN: " + Fen.ToFEN(board));
+        //    Console.WriteLine("Board: \n" + board.ToString());
+
+        //}
+
+        private static void checkOverlap(Board board)
+        {
+            // Check if any pieces overlap in the bitboards
+            for (int i = 0; i < 12; i++)
+            {
+                for (int j = i + 1; j < 12; j++)
+                {
+                    if ((board.bitboards[i] & board.bitboards[j]) != 0)
+                    {
+                        Console.WriteLine($"Overlap detected between pieces {i} and {j}");
+                        Console.WriteLine("FEN: " + Fen.ToFEN(board));
+                        throw new Exception("Bitboard overlap detected.");
+                    }
+                }
+            }
         }
 
         private static int Quiesce(Board board, int alpha, int beta, bool isWhite, int qDepth)
         {
+            ////if (depthOn >11) 
+            //    Console.WriteLine(qDepth +":\t" + Fen.ToFEN(board)); // Ensure FEN is up-to-date for debugging
+            //checkOverlap(board);
+
             if (qDepth >= MaxQDepth)
                 return Eval.EvalBoard(board, isWhite);
 
             //Console.WriteLine($"Quiesce: Depth={qDepth}, Alpha={alpha}, Beta={beta}, IsWhite={isWhite}");
             bool inCheck = MoveGen.IsInCheck(board, isWhite);
-            int stand = Eval.EvalMatAndPST(board, isWhite);
+            int stand = Eval.EvalMaterialsExternal(board, isWhite);
             if (stand >= beta)
                 return beta;
 
@@ -343,11 +442,20 @@ namespace ChessC_
             foreach (var mv in moves)
             {
                 //delta prune
-                if ((mv.Flags & MoveFlags.Promotion) == 0 && !IsGoodCapture(mv))
+                if (!inCheck && (mv.Flags & MoveFlags.Promotion) == 0 && !IsGoodCapture(board,mv))
                     continue;
-                
+
+
+                //if ((mv.Flags & MoveFlags.Capture) != 0)
+                //{
+                //    int see = MoveOrdering.SEE(board, mv);
+                //    if (see < 0)
+                //        continue; // skip clearly losing captures
+                //}
+
+
                 var undo = board.MakeSearchMove(board, mv);
-                if (MoveGen.IsInCheck(board, !isWhite))
+                if (MoveGen.IsInCheck(board, isWhite))
                 {
                     // if our king is now in check, this move is illegal → skip it
                     board.UnmakeMove(mv, undo);
@@ -355,6 +463,8 @@ namespace ChessC_
                 }
                 int score = -Quiesce(board, -beta, -alpha, !isWhite, qDepth+1);
                 board.UnmakeMove(mv, undo);
+                //error check
+
 
                 if (score >= beta) return beta;
                 alpha = Math.Max(alpha, score);
@@ -379,9 +489,13 @@ namespace ChessC_
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsGoodCapture(Move mv)
+        private static bool IsGoodCapture(Board board,Move mv)
         {
             return ((int)mv.PieceCaptured % 6) >= ((int)mv.PieceMoved % 6);
+            //return MoveOrdering.SEE(board, mv) >= 0 ||
+            //       (mv.PieceCaptured != Piece.None &&
+            //        mv.PieceCaptured != Piece.WhitePawn &&
+            //        mv.PieceCaptured != Piece.BlackPawn);
         }
     }
 }
