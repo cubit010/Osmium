@@ -1,62 +1,49 @@
-Osmium Chess Engine
-Osmium is a fast and modern chess engine written in C# targeting .NET 8.0. It uses a bitboard-based architecture and incorporates advanced move generation, search algorithms, and evaluation techniques to achieve efficient and accurate play.
+# Osmium Chess Engine
 
-Features
-Position Representation
-Fully bitboard-based engine
+**Osmium** is a fast and modern chess engine written in C# targeting .NET 8.0. It uses a bitboard-based architecture and incorporates advanced move generation, search algorithms, and evaluation techniques to achieve efficient and accurate play.
 
-Move generation:
+## Features
 
-Pawns, knights, and kings use precomputed move tables
+### Position Representation
 
-Bishops, rooks, and queens use magic bitboards
+- Bitboard-based position representation
+- Move generation:
+  - Pawns, knights, and kings use precomputed move tables
+  - Bishops, rooks, and queens use magic bitboards
+- Move and position legality determined via:
+  - Bitboard operations
+  - Magic bitboards
 
-Move legality and position legality determined using magic bitboards and direct bitboard operations
+### Search Algorithms
 
-Search Algorithms
-Negamax search with:
+- Negamax search with:
+  - Principal Variation Search (PVS)
+  - Late Move Pruning (LMP)
+  - Late Move Reductions (LMR)
+  - Futility pruning
+  - Null move pruning
+  - Null window search
+  - Aspiration windows
+- Quiescence search with delta pruning
+- Transposition table for position caching
 
-Principal Variation Search (PVS)
+### Move Ordering
 
-Late Move Pruning (LMP)
+- Fully sorted move list using:
+  - MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
+  - History heuristic
+  - Killer moves
+  - Counter moves
 
-Late Move Reductions (LMR)
+### Evaluation
 
-Futility pruning
+- Material evaluation with delta updates
+- Piece-square tables (PST)
+- King safety evaluation
+- Pawn structure analysis
+- Mobility evaluation
 
-Null move pruning
+### Additional Capabilities
 
-Null window search
-
-Aspiration windows
-
-Quiescence search with delta pruning
-
-Transposition table for repeated position caching
-
-Move Ordering
-Fully sorted move list using multiple heuristics:
-
-MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
-
-History heuristic
-
-Killer move heuristic
-
-Counter move heuristic
-
-Evaluation
-Material evaluation with delta updates
-
-Piece-square tables (PSTs)
-
-King safety evaluation
-
-Pawn structure analysis
-
-Mobility evaluation
-
-Other Capabilities
-FEN parsing and position initialization
-
-UCI protocol support (in development)
+- FEN parsing and position initialization
+- UCI protocol support (in development)
