@@ -170,7 +170,7 @@ namespace Osmium
             {
                 int checkerSq = BitOperations.TrailingZeroCount(checkers);
                 //Console.WriteLine($"Checker square: {(Square)checkerSq}");
-                Piece checker = MoveGen.FindPieceAt(board, checkerSq);
+                Piece checker = MoveGen.FindEnemyPiece(board, checkerSq);
 
                 ulong between = (Bitboard.BetweenBB[kingSq, checkerSq] | (1UL << checkerSq));
                 legalMask = between;
@@ -313,7 +313,7 @@ namespace Osmium
                     else
                     {
                         // Enemy piece
-                        Piece enemy = MoveGen.FindPieceAt(board, sq);
+                        Piece enemy = MoveGen.FindEnemyPiece(board, sq);
                         if (!IsSlider(enemy, dir))
                             break;
 
@@ -380,8 +380,7 @@ namespace Osmium
         private static bool IsOnBoard(int sq, int dir)
         {
             // the square is already moved, direction is where it came from, must determine if the square it came from is legal
-            int file = sq % 8;
-            int rank = sq / 8;
+            int file = sq & 7;
             
             switch (dir)
             {

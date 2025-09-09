@@ -421,25 +421,6 @@ namespace Osmium
 
 		}
 
-		private static int EvalMaterials(
-			int fP, int fN, int fB, int fR, int fQ,
-			int eP, int eN, int eB, int eR, int eQ)
-		{
-			int score = 0;
-			score += fP * pieceValues[0];
-			score += fN * pieceValues[1];
-			score += fB * pieceValues[2];
-			score += fR * pieceValues[3];
-			score += fQ * pieceValues[4];
-
-			score += eP * pieceValues[5];
-			score += eN * pieceValues[6];
-			score += eB * pieceValues[7];
-			score += eR * pieceValues[8];
-			score += eQ * pieceValues[9];
-
-			return score;
-		}
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
 		private static int EvalPawn(ulong fP, ulong eP, bool isWhite, int phase) => EvalPiecePST(fP, eP, isWhite, WPawnPST, phase);
@@ -674,7 +655,7 @@ namespace Osmium
 				if (neighborSq < 0 || neighborSq >= 64) continue;
 
 				// Ensure no wraparound (like A1 to H1)
-				int fileDiff = Math.Abs((kingSq % 8) - (neighborSq % 8));
+				int fileDiff = Math.Abs((kingSq & 7 ) - (neighborSq & 7));
 				if (fileDiff > 1) continue;
 
 				if (MoveGen.IsSquareAttacked(board, neighborSq, !isWhite))

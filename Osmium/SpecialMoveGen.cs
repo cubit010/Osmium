@@ -9,6 +9,8 @@ namespace Osmium
         private const ulong FileH = 0x8080808080808080UL;
         private const ulong Rank1 = 0x00000000000000FFUL;
         private const ulong Rank8 = 0xFF00000000000000UL;
+        private const ulong Rank7 = 0x00FF000000000000UL;   
+        private const ulong Rank2 = 0x000000000000FF00UL;
         private const ulong Rank4 = 0x00000000FF000000;
         private const ulong Rank5 = 0x000000FF00000000;
 
@@ -35,13 +37,13 @@ namespace Osmium
 
                 foreach (int to in BitIter(normalLeft))
                 {
-                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, true);
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to);
                     if (captured == Piece.BlackKing) continue;
                     moves[count++] = new Move((Square)(to - 7), (Square)to, Piece.WhitePawn, captured, MoveFlags.Capture);
                 }
                 foreach (int to in BitIter(normalRight))
                 {
-                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, true);
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to);
                     if (captured == Piece.BlackKing) continue;
                     moves[count++] = new Move((Square)(to - 9), (Square)to, Piece.WhitePawn, captured, MoveFlags.Capture);
                 }
@@ -65,13 +67,13 @@ namespace Osmium
 
                 foreach (int to in BitIter(normalLeft))
                 {
-                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, false);
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to);
                     if (captured == Piece.WhiteKing) continue;
                     moves[count++] = new Move((Square)(to + 7), (Square)to, Piece.BlackPawn, captured, MoveFlags.Capture);
                 }
                 foreach (int to in BitIter(normalRight))
                 {
-                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, false);
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to);
                     if (captured == Piece.WhiteKing) continue;
                     moves[count++] = new Move((Square)(to + 9), (Square)to, Piece.BlackPawn, captured, MoveFlags.Capture);
                 }
@@ -104,7 +106,7 @@ namespace Osmium
                 {
                     int to = BitOperations.TrailingZeroCount(att);
                     att &= att - 1;
-                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, isWhite);
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to);
                     if (captured == (isWhite ? Piece.BlackKing : Piece.WhiteKing)) continue;
                     moves[count++] = new Move((Square)from, (Square)to,
                                               isWhite ? Piece.WhiteKnight : Piece.BlackKnight,
@@ -120,7 +122,7 @@ namespace Osmium
             {
                 int to = BitOperations.TrailingZeroCount(att);
                 att &= att - 1;
-                Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, isWhite);
+                Piece captured = MoveGen.FindCapturedPiece(board, (Square)to);
                 if (captured == (isWhite ? Piece.BlackKing : Piece.WhiteKing)) continue;
                 moves[count++] = new Move((Square)kfrom, (Square)to,
                                           isWhite ? Piece.WhiteKing : Piece.BlackKing,
@@ -140,14 +142,17 @@ namespace Osmium
                 {
                     int to = BitOperations.TrailingZeroCount(a);
                     a &= a - 1;
-                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, isWhite);
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to);
                     if (captured == (isWhite ? Piece.BlackKing : Piece.WhiteKing)) continue;
-                    moves[count++] = new Move((Square)from, (Square)to,
-                                              ((1UL << from) & bishopBB) != 0
-                                                ? (isWhite ? Piece.WhiteBishop : Piece.BlackBishop)
-                                                : (isWhite ? Piece.WhiteQueen : Piece.BlackQueen),
-                                              captured,
-                                              MoveFlags.Capture);
+                    ref Move move = ref moves[count++];
+                    move.From = (Square)from;
+                    move.To = (Square)to;
+                    move.PieceMoved = ((1UL << from) & bishopBB) != 0
+                                        ? (isWhite ? Piece.WhiteBishop : Piece.BlackBishop)
+                                        : (isWhite ? Piece.WhiteQueen : Piece.BlackQueen);
+                    move.PieceCaptured = captured;
+                    move.PromotionPiece = Piece.None;
+                    move.Flags = MoveFlags.Capture;
                 }
             }
 
@@ -163,30 +168,37 @@ namespace Osmium
                 {
                     int to = BitOperations.TrailingZeroCount(a);
                     a &= a - 1;
-                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to, isWhite);
+                    Piece captured = MoveGen.FindCapturedPiece(board, (Square)to);
                     if (captured == (isWhite ? Piece.BlackKing : Piece.WhiteKing)) continue;
-                    moves[count++] = new Move((Square)from, (Square)to,
-                                              ((1UL << from) & rookBB) != 0
-                                                ? (isWhite ? Piece.WhiteRook : Piece.BlackRook)
-                                                : (isWhite ? Piece.WhiteQueen : Piece.BlackQueen),
-                                              captured,
-                                              MoveFlags.Capture);
+                    ref Move move = ref moves[count++];
+                    move.From = (Square)from;
+                    move.To = (Square)to;
+                    move.PieceMoved = ((1UL << from) & rookBB) != 0
+                                        ? (isWhite ? Piece.WhiteRook : Piece.BlackRook)
+                                        : (isWhite ? Piece.WhiteQueen : Piece.BlackQueen);
+                    move.PieceCaptured = captured;
+                    move.PromotionPiece = Piece.None;
+                    move.Flags = MoveFlags.Capture;
                 }
             }
         }
 
         // Generate promotion moves into span
+        public static readonly Piece[] PromoW = { Piece.WhiteQueen, Piece.WhiteRook, Piece.WhiteBishop, Piece.WhiteKnight };
+        public static readonly Piece[] PromoB = { Piece.BlackQueen, Piece.BlackRook, Piece.BlackBishop, Piece.BlackKnight};
+
         public static void GeneratePromotionMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
         {
             ulong pawns = board.bitboards[(int)(isWhite ? Piece.WhitePawn : Piece.BlackPawn)];
             ulong occ = board.occupancies[2];
             ulong promoRank = isWhite ? Rank8 : Rank1;
+            ulong promoFromRank = isWhite ? Rank7 : Rank2;
             int fwd = isWhite ? 8 : -8;
             Piece[] promos = isWhite
-                ? new[] { Piece.WhiteQueen, Piece.WhiteRook, Piece.WhiteBishop, Piece.WhiteKnight }
-                : new[] { Piece.BlackQueen, Piece.BlackRook, Piece.BlackBishop, Piece.BlackKnight };
+                ?ref PromoW
+                :ref PromoB;
 
-            ulong quiet = ((isWhite ? pawns << 8 : pawns >> 8) & promoRank) & ~occ;
+            ulong quiet = (pawns & promoFromRank) & ~occ;
             foreach (int to in BitIter(quiet))
             {
                 int from = to - fwd;
@@ -196,11 +208,14 @@ namespace Osmium
                     var mv = new Move((Square)from, (Square)to,
                                       isWhite ? Piece.WhitePawn : Piece.BlackPawn,
                                       Piece.None, MoveFlags.Promotion, p);
-                    var undo = board.MakeSearchMove(board, mv);
-                    bool inCheck = MoveGen.IsInCheck(board, isWhite);
-                    board.UnmakeMove(mv, undo);
-                    if (!inCheck)
-                        moves[count++] = mv;
+
+                    //unnessary check for in-check condition because during quiesec illegals are filtered anyways
+
+                    //var undo = board.MakeSearchMove(board, mv);
+                    //bool inCheck = MoveGen.IsInCheck(board, isWhite);
+                    //board.UnmakeMove(mv, undo);
+                    //if (!inCheck)
+                    moves[count++] = mv;
                 }
             }
 
@@ -213,7 +228,7 @@ namespace Osmium
                 foreach (int to in BitIter(capsBB))
                 {
                     int from = to - shift;
-                    Piece cap = MoveGen.FindCapturedPiece(board, (Square)to, isWhite);
+                    Piece cap = MoveGen.FindCapturedPiece(board, (Square)to);
                     if (cap == Piece.WhiteKing || cap == Piece.BlackKing) continue;
                     foreach (Piece p in promos)
                     {
@@ -221,11 +236,11 @@ namespace Osmium
                         var mv = new Move((Square)from, (Square)to,
                                           isWhite ? Piece.WhitePawn : Piece.BlackPawn,
                                           cap, MoveFlags.Promotion | MoveFlags.Capture, p);
-                        var undo = board.MakeSearchMove(board, mv);
-                        bool inCheck = MoveGen.IsInCheck(board, isWhite);
-                        board.UnmakeMove(mv, undo);
-                        if (!inCheck)
-                            moves[count++] = mv;
+                        //var undo = board.MakeSearchMove(board, mv);
+                        //bool inCheck = MoveGen.IsInCheck(board, isWhite);
+                        //board.UnmakeMove(mv, undo);
+                        //if (!inCheck)
+                        moves[count++] = mv;
                     }
                 }
             }

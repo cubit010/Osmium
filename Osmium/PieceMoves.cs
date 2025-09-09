@@ -22,7 +22,7 @@ namespace Osmium
 			Span<Move> moves,
 			ref int count)
 		{
-			ulong occupancy = board.occupancies[(int)Color.White] | board.occupancies[(int)Color.Black];
+			ulong occupancy = board.occupancies[2];
 			ulong attacks = Magics.GetRookAttacks(square, occupancy);
 
 			Piece movePiece = isWhite
@@ -36,7 +36,7 @@ namespace Osmium
 				ulong toB = 1UL << to;
 
 				Piece captured = (toB & enemy) != 0
-					? MoveGen.FindCapturedPiece(board, (Square)to, isWhite)
+					? MoveGen.FindCapturedPiece(board, (Square)to)
 					: Piece.None;
 
 				if (captured is Piece.WhiteKing or Piece.BlackKing)
@@ -64,7 +64,7 @@ namespace Osmium
 			Span<Move> moves,
 			ref int count)
 		{
-			ulong occupancy = board.occupancies[(int)Color.White] | board.occupancies[(int)Color.Black];
+			ulong occupancy = board.occupancies[2];
 			ulong attacks = Magics.GetBishopAttacks(square, occupancy);
 
 			Piece movePiece = isWhite
@@ -78,7 +78,7 @@ namespace Osmium
 				ulong toB = 1UL << to;
 
 				Piece captured = (toB & enemy) != 0
-					? MoveGen.FindCapturedPiece(board, (Square)to, isWhite)
+					? MoveGen.FindCapturedPiece(board, (Square)to)
 					: Piece.None;
 
 				if (captured is Piece.WhiteKing or Piece.BlackKing)
@@ -111,22 +111,14 @@ namespace Osmium
 		internal static void GenerateSliderMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
 		{
 			ulong bishop, rook, queen, friendly, enemy;
-			if (isWhite)
-			{
-				bishop = board.bitboards[(int)Piece.WhiteBishop];
-				rook = board.bitboards[(int)Piece.WhiteRook];
-				queen = board.bitboards[(int)Piece.WhiteQueen];
-				friendly = board.occupancies[(int)Color.White];
-				enemy = board.occupancies[(int)Color.Black];
-			}
-			else
-			{
-				bishop = board.bitboards[(int)Piece.BlackBishop];
-				rook = board.bitboards[(int)Piece.BlackRook];
-				queen = board.bitboards[(int)Piece.BlackQueen];
-				friendly = board.occupancies[(int)Color.Black];
-				enemy = board.occupancies[(int)Color.White];
-			}
+
+
+
+            bishop = board.bitboards[(int)Piece.WhiteBishop + ((int)(board.sideToMove) * 6)];
+            rook = board.bitboards[(int)Piece.WhiteRook + ((int)(board.sideToMove) * 6)];
+            queen = board.bitboards[(int)Piece.WhiteQueen + ((int)(board.sideToMove) * 6)];
+            friendly = board.occupancies[(int)board.sideToMove];
+            enemy = board.occupancies[(int)board.sideToMove ^ 1];
 
 			// bishops
 			ulong b = bishop;
@@ -158,11 +150,12 @@ namespace Osmium
 
 		internal static void GenerateKingMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
 		{
-			ulong kingBB = board.bitboards[isWhite ? (int)Piece.WhiteKing : (int)Piece.BlackKing];
-			ulong friendly = board.occupancies[isWhite ? (int)Color.White : (int)Color.Black];
-			Piece moveK = isWhite ? Piece.WhiteKing : Piece.BlackKing;
+            Piece moveK = isWhite ? Piece.WhiteKing : Piece.BlackKing;
+            ulong kingBB = board.bitboards[(int)moveK];
+			ulong friendly = board.occupancies[(int)board.sideToMove];
+			
 
-			if (kingBB == 0) return;          // should never happen
+			//if (kingBB == 0) return;          // should never happen
 
 			int fromSq = BitOperations.TrailingZeroCount(kingBB);
 			ulong attacks = MoveTables.KingMoves[fromSq] & ~friendly;
@@ -173,7 +166,7 @@ namespace Osmium
 				ulong toBB = 1UL << toSq;
 
 				Piece captured = (toBB & board.occupancies[(int)(isWhite ? Color.Black : Color.White)]) != 0
-					? MoveGen.FindCapturedPiece(board, (Square)toSq, isWhite)
+					? MoveGen.FindCapturedPiece(board, (Square)toSq)
 					: Piece.None;
 
 				if (captured is Piece.WhiteKing or Piece.BlackKing)
@@ -192,8 +185,8 @@ namespace Osmium
 		internal static void GenerateKnightMoves(Board board, Span<Move> moves, ref int count, bool isWhite)
 		{
 			ulong knights = board.bitboards[isWhite ? (int)Piece.WhiteKnight : (int)Piece.BlackKnight];
-			ulong friendly = board.occupancies[isWhite ? (int)Color.White : (int)Color.Black];
-			ulong enemy = board.occupancies[isWhite ? (int)Color.Black : (int)Color.White];
+			ulong friendly = board.occupancies[(int)board.sideToMove];
+			ulong enemy = board.occupancies[(int)board.sideToMove^1]; // bitflip using xor
 			Piece moveN = isWhite ? Piece.WhiteKnight : Piece.BlackKnight;
 
 			while (knights != 0)
@@ -207,7 +200,7 @@ namespace Osmium
 					ulong toBB = 1UL << toSq;
 
 					Piece captured = (toBB & enemy) != 0
-						? MoveGen.FindCapturedPiece(board, (Square)toSq, isWhite)
+						? MoveGen.FindCapturedPiece(board, (Square)toSq)
 						: Piece.None;
 
 					if (captured is Piece.WhiteKing or Piece.BlackKing)
@@ -301,7 +294,7 @@ namespace Osmium
 			//left caps and promos and ep
 			if ((MoveTables.PawnCaptures[0, 0, sq] & enemy) != 0)
 			{
-				Piece tookPiece = MoveGen.FindCapturedPiece(board, (Square)(sq + 7), true);
+				Piece tookPiece = MoveGen.FindCapturedPiece(board, (Square)(sq + 7));
 				if (tookPiece == Piece.BlackKing) return;
 				int to = sq + 7;
 				if (on7th)
@@ -325,7 +318,7 @@ namespace Osmium
 			//right caps and promos and ep
 			if ((MoveTables.PawnCaptures[0, 1, sq] & enemy) != 0)
 			{
-				Piece tookPiece = MoveGen.FindCapturedPiece(board, (Square)(sq + 9), true);
+				Piece tookPiece = MoveGen.FindCapturedPiece(board, (Square)(sq + 9));
 				if (tookPiece == Piece.BlackKing) return;
 				int to = sq + 9;
 				if (on7th)
@@ -380,7 +373,7 @@ namespace Osmium
 			//left caps and promos and ep
 			if ((MoveTables.PawnCaptures[1, 0, sq] & enemy) != 0)
 			{
-				Piece tookPiece = MoveGen.FindCapturedPiece(board, (Square)(sq - 7), false);
+				Piece tookPiece = MoveGen.FindCapturedPiece(board, (Square)(sq - 7));
 				if (tookPiece == Piece.WhiteKing) return;
 
 				if (on2nd)
@@ -404,7 +397,7 @@ namespace Osmium
 			//right caps and promos and ep
 			if ((MoveTables.PawnCaptures[1, 1, sq] & enemy) != 0)
 			{
-				Piece tookPiece = MoveGen.FindCapturedPiece(board, (Square)(sq - 9), false);
+				Piece tookPiece = MoveGen.FindCapturedPiece(board, (Square)(sq - 9));
 				if (tookPiece == Piece.WhiteKing) return;
 				if (on2nd)
 				{

@@ -50,7 +50,7 @@ namespace Osmium
                 if (file != 8)
                     throw new ArgumentException("Invalid FEN: rank does not sum to 8 files", nameof(fen));
             }
-
+                
             // 2) Active color
             board.sideToMove = parts[1] == "w" ? Color.White : Color.Black;
 
@@ -104,7 +104,11 @@ namespace Osmium
 
             // Rebuild occupancies and compute initial Zobrist
             board.UpdateOccupancies();
-            board.ComputeInitialZobrist();
+            board.ComputeZobrist();
+            board.InitMaterials();
+            board.ClearHistory();
+
+            board.InitRepStack();
         }
 
         private static Piece CharToPiece(char c)

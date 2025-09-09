@@ -22,6 +22,7 @@ namespace Osmium
 		private static readonly Random rng = new Random(123456);
 
 		// Static constructor initializes all Zobrist arrays
+
 		static Zobrist()
 		{
 			// Initialize piece-square keys

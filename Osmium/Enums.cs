@@ -77,12 +77,26 @@ namespace Osmium
              | ((int)To << 6)
              | ((int)PromotionPiece << 12);
 
+        public ushort Encode()
+        {
+            // Pack into 16 bits: From (6 bits) | To (6 bits) | Flags (4 bits)
+            return (ushort)(((int)From & 0x3F) | (((int)To & 0x3F) << 6) | (((int)Flags & 0xF) << 12));
+        }
+        public static Move FromEncoded(ushort code)
+        {
+            Move move = new Move();
+            move.From = (Square)(code & 0x3F);
+            move.To = (Square)((code >> 6) & 0x3F);
+            move.Flags = (MoveFlags)((code >> 12) & 0xF);
+            return move;
+        }
+
         public Move(
-            Square from, 
-            Square to, 
-            Piece moved, 
-            Piece capture = Piece.None, 
-            MoveFlags flag = MoveFlags.None, 
+            Square from,
+            Square to,
+            Piece moved,
+            Piece capture = Piece.None,
+            MoveFlags flag = MoveFlags.None,
             Piece promotion = Piece.None)
         {
             From = from;
@@ -92,14 +106,18 @@ namespace Osmium
             PieceCaptured = capture;
             Flags = flag;
 
-            if (promotion != Piece.None)
-                Flags |= MoveFlags.Promotion;
-            if (capture != Piece.None)
-                Flags |= MoveFlags.Capture;
+            //if (promotion != Piece.None)
+            //    Flags |= MoveFlags.Promotion;
+            //if (capture != Piece.None)
+            //    Flags |= MoveFlags.Capture;
         }
+
+
+        
 
         public override string ToString()
         {
+            //UCI style
             string move = $"{From}{To}";
             if ((Flags & MoveFlags.Promotion) != 0)
                 move += PromotionToChar(PromotionPiece);

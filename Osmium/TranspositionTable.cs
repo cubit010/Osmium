@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 
 namespace Osmium
 {
@@ -10,138 +9,197 @@ namespace Osmium
         UpperBound = 2
     }
 
+    public struct TTEntry
+    {
+        public ulong key;
+        public byte depth8;
+        public byte genBound8;
+        public ushort move16;
+        public short score16;
+
+        public bool IsOccupied => key != 0;
+        public byte Generation => (byte)(genBound8 >> 3);
+        public NodeType Bound => (NodeType)(genBound8 & 0x3);
+        public int Depth => depth8;
+        public ushort Move => move16;
+        public int Score => score16;
+
+        public byte RelativeAge(byte currentGen)
+        {
+            return (byte)((32 + currentGen - Generation) & 31);
+        }
+
+        public bool Matches(ulong fullKey)
+        {
+            return key == fullKey;
+        }
+
+        public void Save(ulong fullKey, int depth, int score, NodeType boundType, ushort move, byte generation)
+        {
+            key = fullKey;
+            depth8 = (byte)(depth);
+            genBound8 = (byte)((generation << 3) | ((byte)boundType & 0x3));
+            move16 = move;
+            score16 = (short)score;
+        }
+    }
     public class TranspositionTable
     {
-        // 8 bytes per entry
-        private readonly ulong[] entries;
-        private readonly ulong[] fullKeys;   // optional for perfect safety
-        private readonly int mask;
-        private byte currentAge;
+        private readonly TTEntry[] table;
+        private readonly int clusterCount;
+        private readonly int slotsPerBucket = 4; 
+        private readonly ulong bucketMask;
+        private byte generation;
 
-        public TranspositionTable(int megabytes, bool storeFullKeys = true)
+        public uint Lookups { get; private set; }
+        public uint UsableHits { get; private set; }
+        public uint MoveOnlyHits { get; private set; }
+        public uint CutoffsFromTT { get; private set; }
+        public uint TagCollisions { get; private set; }
+        public uint Hits { get; private set; }
+
+        public TranspositionTable(int megabytes)
         {
-            int count = (megabytes * 1024 * 1024) / sizeof(ulong);
-            count = 1 << (int)Math.Log2(count);
-            mask = count - 1;
+            long bytes = megabytes * 1024L * 1024L;
+            int entrySize = 16; // Your TTEntry size
+            int totalEntries = (int)Math.Max(4, bytes / entrySize);
 
-            entries = new ulong[count];
-            fullKeys = storeFullKeys ? new ulong[count] : null;
+            // More clusters with exactly 4 slots each
+            clusterCount = NextPowerOfTwo(totalEntries / slotsPerBucket);
+            table = new TTEntry[clusterCount * slotsPerBucket];
+            bucketMask = (ulong)(clusterCount - 1);
+            generation = 0;
+
+            Console.WriteLine($"TT: {totalEntries:N0} entries, {clusterCount:N0} clusters, 4 slots each");
+        }
+
+        public bool Probe(ulong key, int depth, int alpha, int beta, out int score, out ushort bestMove)
+        {
+            if (Program.TTStats) Lookups++;
+
+            score = 0;
+            bestMove = 0;
+
+            int clusterIndex = (int)(key & bucketMask) * slotsPerBucket;
+            TTEntry foundEntry = default;
+            bool hasMove = false;
+            bool hasScore = false;
+
+            // Search all 4 slots in the cluster
+            for (int i = 0; i < slotsPerBucket; i++)
+            {
+                ref TTEntry entry = ref table[clusterIndex + i];
+
+                if (!entry.IsOccupied || !entry.Matches(key))
+                    continue;
+
+                // Found matching entry
+                if (entry.Move != 0 && !hasMove)
+                {
+                    bestMove = entry.Move;
+                    hasMove = true;
+                }
+
+         
+                if (entry.Depth >= depth && !hasScore)
+                {
+                    switch (entry.Bound)
+                    {
+                        case NodeType.Exact:
+                            score = entry.Score;
+                            hasScore = true;
+                            if (Program.TTStats) { UsableHits++; Hits++; }
+                            break;
+
+                        case NodeType.LowerBound when entry.Score >= beta:
+                            score = entry.Score;
+                            hasScore = true;
+                            if (Program.TTStats) { CutoffsFromTT++; UsableHits++; Hits++; }
+                            break;
+
+                        case NodeType.UpperBound when entry.Score <= alpha:
+                            score = entry.Score;
+                            hasScore = true;
+                            if (Program.TTStats) { CutoffsFromTT++; UsableHits++; Hits++; }
+                            break;
+                    }
+                }
+
+                // If we found both move and usable score, we're done
+                if (hasMove && hasScore)
+                    break;
+            }
+
+            if (hasMove && !hasScore && Program.TTStats)
+                MoveOnlyHits++;
+
+            return hasScore;
+        }
+
+        public void Store(ulong key, int depth, int score, NodeType boundType, ushort move)
+        {
+            int clusterIndex = (int)(key & bucketMask) * slotsPerBucket;
+
+            // Always overwrite matching entry if found
+            for (int i = 0; i < slotsPerBucket; i++)
+            {
+                ref TTEntry entry = ref table[clusterIndex + i];
+                if (entry.IsOccupied && entry.Matches(key))
+                {
+                    // Always overwrite 
+                    entry.Save(key, depth, score, boundType, move, generation);
+                    return;
+                }
+            }
+
+            // No matching entry found, find replacement candidate
+            int replaceIndex = 0;
+            int lowestPriority = int.MaxValue;
+
+            for (int i = 0; i < slotsPerBucket; i++)
+            {
+                ref TTEntry entry = ref table[clusterIndex + i];
+
+                // Empty slot - use immediately
+                if (!entry.IsOccupied)
+                {
+                    replaceIndex = i;
+                    break;
+                }
+
+                // Calculate replacement priority (lower = more likely to replace)
+                // Prioritize: old generation > shallow depth > non-exact bounds
+                int age = entry.RelativeAge(generation);
+                int priority = entry.Depth - (age * 8); // Heavy age penalty like before
+
+                if (priority < lowestPriority)
+                {
+                    lowestPriority = priority;
+                    replaceIndex = i;
+                }
+            }
+
+            // Replace the selected entry
+            ref TTEntry victim = ref table[clusterIndex + replaceIndex];
+            victim.Save(key, depth, score, boundType, move, generation);
         }
 
         public void NewSearch()
         {
-            unchecked { currentAge++; }
+            unchecked { generation++; }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong Pack(ushort score, ushort move, ushort tag, byte depth, byte age, NodeType type)
+        private static int NextPowerOfTwo(int v)
         {
-            // Bits (LSB → MSB):
-            // [ score:16 | move:16 | tag:16 | depth:7 | age:5 | type:2 | unused:10 ]
-            return
-                ((ulong)score & 0xFFFFUL) |
-                (((ulong)move & 0xFFFFUL) << 16) |
-                (((ulong)tag & 0xFFFFUL) << 32) |
-                (((ulong)depth & 0x7FUL) << 48) |
-                (((ulong)age & 0x1FUL) << 55) |
-                (((ulong)(byte)type & 0x3UL) << 60);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ushort UnpackScore(ulong e) => (ushort)(e & 0xFFFF);
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ushort UnpackMove(ulong e) => (ushort)((e >> 16) & 0xFFFF);
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ushort UnpackTag(ulong e) => (ushort)((e >> 32) & 0xFFFF);
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte UnpackDepth(ulong e) => (byte)((e >> 48) & 0x7F);
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte UnpackAge(ulong e) => (byte)((e >> 55) & 0x1F);
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static NodeType UnpackType(ulong e) => (NodeType)((e >> 60) & 0x3);
-
-        public void Store(ulong key, int depth, int score, Move bestMove, NodeType type)
-        {
-            int idx = (int)(key & (ulong)mask);
-            ushort tag = (ushort)(key & 0xFFFF);
-
-            ulong old = entries[idx];
-            byte oldAge = UnpackAge(old);
-            byte oldDepth = UnpackDepth(old);
-
-            if (oldAge != currentAge || depth > oldDepth)
-            {
-                var uscore = (ushort)score;
-                var umove = EncodeMove(bestMove); // you must implement Encode→ushort
-                entries[idx] = Pack(uscore, umove, tag, (byte)depth, currentAge, type);
-                if (fullKeys != null)
-                    fullKeys[idx] = key;
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool Probe(ulong key, int depth, int alpha, int beta, out int score, out Move bestMove)
-        {
-            int idx = (int)(key & (ulong)mask);
-
-            // Use local variable for entries to help JIT optimizations
-            var localEntries = entries;
-            ulong entry = localEntries[idx];
-
-            // quick tag check
-            if (UnpackTag(entry) != (ushort)(key & 0xFFFF))
-            {
-                score = 0; bestMove = default;
-                return false;
-            }
-
-            // optional full-key verify
-            var localFullKeys = fullKeys;
-            if (localFullKeys != null && localFullKeys[idx] != key)
-            {
-                score = 0; bestMove = default;
-                return false;
-            }
-
-            // unpack
-            byte age = UnpackAge(entry);
-            byte edepth = UnpackDepth(entry);
-            ushort uscore = UnpackScore(entry);
-            ushort umove = UnpackMove(entry);
-            NodeType t = UnpackType(entry);
-
-            bestMove = DecodeMove(umove);
-            score = (short)uscore;
-
-            if (age != currentAge || edepth < depth)
-                return false;
-
-            if (t == NodeType.Exact)
-                return true;
-            if (t == NodeType.LowerBound && score >= beta)
-                return true;
-            if (t == NodeType.UpperBound && score <= alpha)
-                return true;
-
-            return false;
-        }
-        private static ushort EncodeMove(Move mv)
-        {
-            // assume From and To are enums 0–63, Promotion 0–15
-            ushort f = (ushort)((byte)mv.From & 0x3F);
-            ushort t = (ushort)(((byte)mv.To & 0x3F) << 6);
-            ushort p = (ushort)(((byte)mv.PromotionPiece & 0x0F) << 12);
-            return (ushort)(f | t | p);
-        }
-
-        // Unpacks a 16‑bit code back into a Move
-        private static Move DecodeMove(ushort code)
-        {
-            var from = (Square)(code & 0x3F);
-            var to = (Square)((code >> 6) & 0x3F);
-            var promo = (Piece)((code >> 12) & 0x0F);
-            return new Move(from, to, promo);
+            v = Math.Max(1, v);
+            v--;
+            v |= v >> 1;
+            v |= v >> 2;
+            v |= v >> 4;
+            v |= v >> 8;
+            v |= v >> 16;
+            v++;
+            return v;
         }
     }
 }
