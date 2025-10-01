@@ -61,8 +61,8 @@
 - go wtime <wtimeMs> btime <btimeMs> winc <wincMs> binc <bincMs> - can be only wtime and btime, increment is optional
 - stop - early stop for search
 - setoption <option> - allows user / interfaces to modify certain settings of the engine
-- position - sets up the engine in a certain position
--   startpos - sets the engine at starting position
--   moves <move1> <move2> ... <moveN> -- from the current position (usually paired with startpos) make the moves in the list to reach a certain position
--   fen <fenStr> - parses a fen string and sets up the board according to the fen
+- position <> - sets up the engine in a certain position
+- position startpos - sets the engine at starting position
+- position moves <move1> <move2> ... <moveN> -- from the current position (usually paired with startpos) make the moves in the list to reach a certain position
+- position fen <fenStr> - parses a fen string and sets up the board according to the fen
 
