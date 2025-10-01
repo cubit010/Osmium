@@ -46,5 +46,23 @@
 ### Additional Capabilities
 
 - FEN parsing and position initialization
-- 
-- UCI protocol support (in development)
+- Algebraic Move Notation with Ambiguity Differentiation
+- UCI protocol support (partial, not supporting full UCI commands yet)
+
+## Usage
+
+### The Engine is a command-line engine, which only supports uci commands
+### Not all of the commands are supported, below is a list that is supported
+- uci - uci info about author (me) and engine specifications 
+- isready - sets up the engine
+- ucinewgame - prepares the engine for a new game, with a fresh board
+- quit - exits engine
+- go movetime <timeMs> - start thinking with <timeMs> total time alotted
+- go wtime <wtimeMs> btime <btimeMs> winc <wincMs> binc <bincMs> - can be only wtime and btime, increment is optional
+- stop - early stop for search
+- setoption <option> - allows user / interfaces to modify certain settings of the engine
+- position - sets up the engine in a certain position
+-   startpos - sets the engine at starting position
+-   moves <move1> <move2> ... <moveN> -- from the current position (usually paired with startpos) make the moves in the list to reach a certain position
+-   fen <fenStr> - parses a fen string and sets up the board according to the fen
+
