@@ -1,6 +1,6 @@
 # Osmium Chess Engine
 
-**Osmium** is a fast and modern chess engine written in C# targeting .NET 8.0. It uses a bitboard-based architecture and incorporates advanced move generation, search algorithms, and evaluation techniques to achieve efficient and accurate play.
+**Osmium** is a chess engine written in C# targeting .NET 8.0. It uses a bitboard-based architecture and incorporates advanced move generation, search algorithms, and evaluation techniques to achieve efficient and accurate play.
 
 ## Features
 
@@ -38,7 +38,7 @@
 ### Evaluation
 
 - Material evaluation with delta updates
-- Piece-square tables (PST)
+- 3-Phased Piece-square tables (PST)
 - King safety evaluation
 - Pawn structure analysis
 - Mobility evaluation
@@ -46,4 +46,5 @@
 ### Additional Capabilities
 
 - FEN parsing and position initialization
+- 
 - UCI protocol support (in development)
