@@ -29,7 +29,7 @@ namespace Osmium
 
             // 3) Call the move ordering test function
             // Optionally pass PV move (null here) and depth 0
-            MoveOrdering.OrderMovesTest(board, validMoves, pvMove: null, depth: 0);
+            MoveOrdering.OrderMoves(board, validMoves, pvMove: null, depth: 0);
         }
     }
 }

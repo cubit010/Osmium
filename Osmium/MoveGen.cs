@@ -6,9 +6,8 @@ using System.Runtime.CompilerServices;
 
 namespace Osmium
 {
-	internal static class MoveGen
+	public static class MoveGen
 	{
-
 		//currently unused, is only used by SEE but SEE isn't implemented
 		public static void GenerateAttackersToSquare(Board board, Square target, Color color, Span<Move> result, ref int count)
 		{
@@ -37,18 +36,36 @@ namespace Osmium
 			{
 				UndoInfo undo = board.MakeSearchMove(board, moves[i]);
 
-				bool inCheck = IsInCheck(board, isWhiteToMove);
+				bool inCheck = IsInCheck(board, opponent);
 
 				if (inCheck)
 				{
 					moves[i].AddMoveFlag(MoveFlags.Check);
-					RunMateCheck(board, opponent, moves[i]);
+					RunMateCheck(board, opponent, ref moves[i]);
 				}
 				board.UnmakeMove(moves[i], undo);
 			}
 		}
 
-		public static void RunMateCheck(Board board, bool sideBeingChecked, Move move)
+        public static void FlagCheck(Board board, Span<Move> moves, int count, bool isWhiteToMove)
+        {
+
+            bool opponent = !isWhiteToMove;
+
+            for (int i = 0; i < count; i++)
+            {
+                UndoInfo undo = board.MakeSearchMove(board, moves[i]);
+
+                if (IsInCheck(board, opponent))
+                {
+                    moves[i].AddMoveFlag(MoveFlags.Check);
+                    
+                }
+                board.UnmakeMove(moves[i], undo);
+            }
+        }
+
+        public static void RunMateCheck(Board board, bool sideBeingChecked, ref Move move)
 		{
 			bool isDoubleCheck = IsDoubleCheck(board, sideBeingChecked, out int atkerSq, out Piece attackerPiece);
 
@@ -415,7 +432,12 @@ namespace Osmium
 			return false;
 		}
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		internal static void GenAllDebug(Board board, Span<Move> moves, ref int count, bool isWhite)
+		{
+			GenSemiLegal(board, moves, ref count, isWhite);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private static void GenSemiLegal(Board board, Span<Move> moves, ref int count, bool isWhite)
 		{
 			PieceMoves.GenerateKingMoves(board, moves, ref count, isWhite);
@@ -423,8 +445,31 @@ namespace Osmium
 			PieceMoves.GenerateSliderMoves(board, moves, ref count, isWhite);
 			PieceMoves.GeneratePawnMoves(board, moves, ref count, isWhite);
 			GenerateCastles(board, moves, ref count, isWhite);
-		}
-
+			foreach(Move mv in moves.Slice(0, count))
+			{
+				if(isWhite && mv.PieceMoved >= Piece.BlackPawn)
+				{
+					Console.WriteLine("Error: Black piece generated for white");
+                }
+				if(!isWhite && mv.PieceMoved <= Piece.WhiteKing)
+				{
+					Console.WriteLine("Error: White piece generated for black");
+                }
+            }
+        }
+		private static void FilterMoves(Board board, Span<Move> span, ref int count, bool isWhite)
+		{
+			int newCount = 0;
+            for (int i = 0; i < count; i++)
+			{
+				board.MakeSearchMove(board, span[i]);
+				if(!IsInCheck(board, isWhite))
+				{
+					span[newCount++]= span[i];
+                }
+            }
+			count = newCount;
+        }
 		private static readonly Move[] _moveBuffer = new Move[256];
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
@@ -440,7 +485,18 @@ namespace Osmium
 
 			for (int i = 0; i < tmpCount; i++)
 				result[count++] = tmp[i];
-		}
+            foreach (Move mv in result.Slice(0, count))
+            {
+                if (isWhite && mv.PieceMoved >= Piece.BlackPawn)
+                {
+                    Console.WriteLine("Error 2: Black piece generated for white");
+                }
+                if (!isWhite && mv.PieceMoved <= Piece.WhiteKing)
+                {
+                    Console.WriteLine("Error 2: White piece generated for black");
+                }
+            }
+        }
 		[MethodImpl(MethodImplOptions.NoInlining)]
 
 
@@ -520,11 +576,11 @@ namespace Osmium
 
 			return Piece.None;
 		}
-  
+
 		public static bool IsSquareAttacked(Board board, int square, bool isWhiteDefend)
 		{
-			int isWhite = (isWhiteDefend ? (int)Color.Black : (int)Color.White);
-			int enemy = (6 * isWhite);
+			int isWhiteAtk = (isWhiteDefend ? (int)Color.Black : (int)Color.White);
+			int enemy = (6 * isWhiteAtk);
 			ulong occ = board.occupancies[2];
 
 			//Console.WriteLine(enemy);
@@ -537,7 +593,7 @@ namespace Osmium
 			ulong king = board.bitboards[5 + enemy];
 
 			
-			return	((MoveTables.CombinedPCaps[isWhite, square] & pawn) != 0) ||
+			return	((MoveTables.CombinedPCaps[isWhiteAtk, square] & pawn) != 0) ||
 					((MoveTables.KnightMoves[square] & knight) != 0) ||
 					((MoveTables.KingMoves[square] & king) != 0) ||
 					((Magics.GetRookAttacks(square, occ) & (rook | queen)) != 0) ||

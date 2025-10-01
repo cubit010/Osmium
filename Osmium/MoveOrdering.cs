@@ -32,7 +32,8 @@ namespace Osmium
         };
 
         private static readonly Move?[,] killerMoves = new Move?[Search.MaxDepth + 1, 2];
-		private static readonly int[,] historyHeuristic = new int[64, 64];
+		internal static int[,] historyHeuristic = new int[64, 64];
+
 		private struct ScoredMove(Move move, int score)
 		{
 			public Move Move = move;
@@ -80,71 +81,15 @@ namespace Osmium
                 BinaryInsertionSort(scores, moves, count);
         }
 
-        public static void OrderMovesScalarTest(Board board, Span<Move> moves, Move? pvMove = null, int depth = 0)
-        {
-            int count = moves.Length;
-            if (count <= 1) return;
+      
 
-            // Initialize buffers
-            if (_scorebuffer == null || _scorebuffer.Length < MaxMoves)
-                _scorebuffer = new int[MaxMoves];
-            if (_moveBuffer == null || _moveBuffer.Length < MaxMoves)
-                _moveBuffer = new Move[MaxMoves];
-
-            Move? killer0 = depth <= Search.MaxDepth ? killerMoves[depth, 0] : null;
-            Move? killer1 = depth <= Search.MaxDepth ? killerMoves[depth, 1] : null;
-            if (killer0 != null)
-                Console.WriteLine($"Killer0 at depth {depth}: {killer0}");
-            if (killer1 != null)
-                Console.WriteLine($"Killer1 at depth {depth}: {killer1}");
-
-            Span<int> scores = _scorebuffer.AsSpan(0, count);
-            Span<Move> tmpMoves = _moveBuffer.AsSpan(0, count);
-
-            // Compute scores
-            for (int i = 0; i < count; i++)
-                scores[i] = ComputeScore(moves[i], pvMove, killer0, killer1, board);
-
-            // Debug: print scores before sorting
-            if (orderDebug)
-            {
-                Console.WriteLine("=== BEFORE SORTING ===");
-                for (int i = 0; i < count; i++)
-                    Console.WriteLine($"Index {i}: {moves[i]} = {scores[i]}");
-            }
-            // Sort moves using binary insertion sort
-            if (useQuickSort)
-                QuickSort(scores, moves, count);
-            else
-                BinaryInsertionSort(scores, moves, count);
-
-            // Debug: print scores after sorting
-            if (orderDebug)
-            {
-                Console.WriteLine("=== AFTER SORTING ===");
-                for (int i = 0; i < count; i++)
-                {
-                    int finalScore = ComputeScore(moves[i], pvMove, killer0, killer1, board);
-                    Console.WriteLine($"Index {i}: {MoveNotation.ToAlgebraicNotation(moves[i], moves)} = {finalScore}");
-                }
-                Console.WriteLine("======================");
-            }
-            // Optional verification: check descending order
-            //for (int i = 1; i < count; i++)
-            //{
-            //    if (ComputeScore(moves[i - 1], pvMove, killer0, killer1, board) <
-            //        ComputeScore(moves[i], pvMove, killer0, killer1, board))
-            //    {
-            //        Console.WriteLine($"[WARNING] Move ordering incorrect at index {i - 1} -> {i}");
-            //    }
-            //}
-        }
-
-        internal const bool usePadding = false;
-
+        internal const bool usePadding = true;
+        
         public static void OrderMoves(Board board, Span<Move> moves, Move? pvMove = null, int depth = 0)
 		{
-			int count = moves.Length;
+            
+
+            int count = moves.Length;
 			if (count <= 1) return;
 
 			Move? killer0 = depth <= Search.MaxDepth ? killerMoves[depth, 0] : null;
@@ -177,18 +122,16 @@ namespace Osmium
                 int pow2 = HighestPowerOfTwoLE(count);
                 if (pow2 < 16)
                 {
-                    Span<int> tailScores = scores.Slice(0, count);
-                    Span<Move> tailMoves = moves.Slice(0, count);
-                    BinaryInsertionSort(tailScores, tailMoves, tailScores.Length);
+                    BinaryInsertionSort(scores, moves, scores.Length);
                     // Copy final sorted result back
-                    tailMoves.CopyTo(moves);
+                    moves.CopyTo(moves);
                 }
                 else
                 {
                     Span<int> prefixScores = scores.Slice(0, pow2);
                     Span<Move> prefixMoves = moves.Slice(0, pow2);
 
-                    SimdSorterDraft.SimdBitonicSort(prefixScores, prefixMoves);
+                    SimdSorter.SimdBitonicSort(prefixScores, prefixMoves);
                     if (count > pow2)
                     {
                         Span<int> tailScores = scores.Slice(pow2, count - pow2);
@@ -206,114 +149,67 @@ namespace Osmium
             } 
             else
             {
+                //if (count < 8)
+                //{
+                //    BinaryInsertionSort(scores, moves, scores.Length);
+                //    return;
+                //}
+
                 int pow2 = HighestPowerOfTwoLE(count);
-                if(count != pow2)
+                if (pow2 < 8)
+                    pow2 = 8;
+                if (count != pow2)
                 {
                     pow2 <<= 1;
                 }
+                SimdSorter.SimdBitonicSort(scores, moves, pow2);
 
             }
-		}
 
-
-        public static void OrderMovesTest(Board board, Span<Move> moves, Move? pvMove = null, int depth = 0)
-        {
-            int count = moves.Length;
-            if (count <= 1) return;
-            Move? killer0 = depth <= Search.MaxDepth ? killerMoves[depth, 0] : null;
-            Move? killer1 = depth <= Search.MaxDepth ? killerMoves[depth, 1] : null;
-            // Initialize thread-static buffers
-            if (_scorebuffer == null || _scorebuffer.Length < MaxMoves)
-                _scorebuffer = new int[MaxMoves];
-            if (_moveBuffer == null || _moveBuffer.Length < MaxMoves)
-                _moveBuffer = new Move[MaxMoves];
-            Span<int> scores = _scorebuffer.AsSpan(0, count);
-            Span<Move> tmpMoves = _moveBuffer.AsSpan(0, count);
-            // 1) Pre‑insert PV/Killers
-            int insertPos = 0;
-            //ExtractAndInsert(moves, pvMove, ref insertPos);
-            //ExtractAndInsert(moves, killer0, ref insertPos);
-            //ExtractAndInsert(moves, killer1, ref insertPos);
-            //int remainingCount = count - insertPos;
-            //if (remainingCount <= 1)
-            //	return;
-            // 2) Score remaining moves
-            for (int i = 0; i < count; i++)
-                scores[i] = ComputeScore(moves[insertPos + i], pvMove, killer0, killer1, board);
-
-            if (orderDebug)
+            if (false)
             {
-                // Debug: Print scores BEFORE sorting
-                Console.WriteLine("=== BEFORE SORTING ===");
-                for (int i = 0; i < count; i++)
+                bool sorted = true;
+                for (int i = 1; i < count; i++)
                 {
-                    Console.WriteLine($"Index {i}: {MoveNotation.ToAlgebraicNotation(moves[i], moves)} = {scores[i]}");
+                    if (scores[i] > scores[i - 1]) // should never increase
+                    {
+                        sorted = false;
+                        Console.WriteLine($"Not sorted at {i}, {scores[i]} > {scores[i - 1]}");
+                        break;
+                    }
                 }
-            }
-            // 3) Sort remaining moves
-            int pow2 = HighestPowerOfTwoLE(count);
-            if (pow2 < 16)
-            {
-                Span<int> tailScores = scores.Slice(0, count);
-                Span<Move> tailMoves = moves.Slice(0, count);
-                BinaryInsertionSort(tailScores, tailMoves, tailScores.Length);
-                // Copy final sorted result back
-                tailMoves.CopyTo(moves);
-            }
-            else
-            {
-                if (SimdSorterDraft.doDebugSimd)
+
+                if (!sorted)
                 {
-                    Console.WriteLine(scores.Length + "\n here be the inital scores");
+                    Console.WriteLine(board.zobristKey);
+                    Console.WriteLine("historyHeuristic = {");
+                    for (int i = 0; i < 64; i++)
+                    {
+                        Console.Write("    { ");
+                        for (int j = 0; j < 64; j++)
+                        {
+                            Console.Write(historyHeuristic[i, j]);
+                            if (j < 63) Console.Write(", ");
+                        }
+                        Console.WriteLine(" },");
+                       
+                    }
+                    Console.WriteLine("}");
+                    //Console.WriteLine("Sort verification:");
                     for (int i = 0; i < scores.Length; i++)
                     {
-                        scores[i] += i;
-                        Console.Write(scores[i] + " ");
+                        Console.Write($"{scores[i],6} - {MoveNotation.ToAlgebraicNotation(moves[i], moves),-6} ");
+                        if (i % 8 == 7)
+                            Console.WriteLine();
                     }
-                }
-                Span<int> prefixScores = scores.Slice(0, pow2);
+                    if (!sorted)
+                        Environment.Exit(1);
 
-
-                Span<Move> prefixMoves = moves.Slice(0, pow2);
-                SimdSorterDraft.SimdBitonicSort(prefixScores, prefixMoves);
-                if (count > pow2)
-                {
-                    Span<int> tailScores = scores.Slice(pow2, count - pow2);
-                    Span<Move> tailMoves = moves.Slice(pow2, count - pow2);
-                    BinaryInsertionSort(tailScores, tailMoves, tailScores.Length);
-                    if (orderDebug)
-                    {
-                        // Debug: Print both sections BEFORE merging
-                        Console.WriteLine("=== BEFORE MERGING ===");
-                        Console.WriteLine("SIMD-sorted section (first 16):");
-                        for (int i = 0; i < pow2; i++)
-                        {
-                            Console.WriteLine($"  Index {i}: {MoveNotation.ToAlgebraicNotation(prefixMoves[i], prefixMoves)} = {prefixScores[i]}");
-                        }
-                        Console.WriteLine("Binary-sorted section (remaining):");
-                        for (int i = 0; i < tailScores.Length; i++)
-                        {
-                            Console.WriteLine($"  Index {pow2 + i}: {MoveNotation.ToAlgebraicNotation(tailMoves[i], tailMoves)} = {tailScores[i]}");
-                        }
-                        Console.WriteLine("========================");
-                    }
-                    // Merge two sorted sections
-                    MergeSortedSections(prefixScores, prefixMoves, tailScores, tailMoves, scores, tmpMoves);
-                    // Copy final sorted result back
-                    tmpMoves.CopyTo(moves);
                 }
             }
-            if (orderDebug) { 
-                // Debug: Recompute scores for the final sorted moves to verify
-                Console.WriteLine("=== AFTER SORTING ===");
-                for (int i = 0; i < count; i++)
-                {
 
-                    Console.WriteLine($"Index {i}: {MoveNotation.ToAlgebraicNotation(moves[i], moves)} = {scores[i]}");
-                }
-                Console.WriteLine("======================");
-            }
         }
+
 
 
         // Static helper—no spans captured by closures
@@ -341,9 +237,9 @@ namespace Osmium
 			if ((k0.HasValue && move.Equals(k0.Value)) ||
 				(k1.HasValue && move.Equals(k1.Value)))
 				return int.MaxValue - 1;
-
-			if (move.PieceCaptured != Piece.None)
-				return 300_000 + MVVLVA[(int)move.PieceMoved % 6, (int)move.PieceCaptured % 6];
+            int score = 0;
+            if (move.PieceCaptured != Piece.None)
+                return 300_000 + MVVLVA[(int)move.PieceMoved % 6, (int)move.PieceCaptured % 6] + (((move.Flags & MoveFlags.Promotion) != 0) ? (int)move.PromotionPiece * 100: 0);
                     //SEE(board, move);
 			if ((move.Flags & MoveFlags.Promotion) != 0)
 				return 80_000 + (int)move.PromotionPiece * 100;

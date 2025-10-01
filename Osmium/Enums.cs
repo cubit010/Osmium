@@ -112,16 +112,13 @@ namespace Osmium
             //    Flags |= MoveFlags.Capture;
         }
 
-
-        
-
         public override string ToString()
         {
             //UCI style
             string move = $"{From}{To}";
             if ((Flags & MoveFlags.Promotion) != 0)
                 move += PromotionToChar(PromotionPiece);
-            return move;
+            return move.ToLowerInvariant();
         }
 
         //must not be called in a foreach because foreach modifies flags by creating a separate copy

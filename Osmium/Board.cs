@@ -1,6 +1,7 @@
 ﻿
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 
 namespace Osmium
 {
@@ -61,20 +62,20 @@ namespace Osmium
 			if (zobristKey != other.zobristKey) return false;
 
 			// Compare history stacks by enumerating to arrays (to compare order)
-			var thisHistory = history.Reverse().ToArray();
-			var otherHistory = other.history.Reverse().ToArray();
+			//var thisHistory = history.Reverse().ToArray();
+			//var otherHistory = other.history.Reverse().ToArray();
 
-			if (thisHistory.Length != otherHistory.Length) return false;
+			//if (thisHistory.Length != otherHistory.Length) return false;
 
-			if (thisHistory.Length != otherHistory.Length)
-			{
-				return false;
-			}
-			for (int i = 0; i < thisHistory.Length; i++)
-			{
-				if (!thisHistory[i].Equals(otherHistory[i]))
-					return false;
-			}
+			//if (thisHistory.Length != otherHistory.Length)
+			//{
+			//	return false;
+			//}
+			//for (int i = 0; i < thisHistory.Length; i++)
+			//{
+			//	if (!thisHistory[i].Equals(otherHistory[i]))
+			//		return false;
+			//}
 
 			return true;
 		}
@@ -299,14 +300,20 @@ namespace Osmium
 		}
 
 		// Applies a move and pushes state for undo
-		public UndoInfo MakeSearchMove(Board board, Move move)
+		public string GetPieceSymbol(int file, int rank)
+		{
+			Square sq = (Square)(rank * 8 + file);
+			return Utils.SquareToPieceString(this, sq);
+		}
+        public UndoInfo MakeSearchMove(Board board, Move move)
 		{
 			//if (board.bitboards[5] == 0 && board.bitboards[11] == 0)
 			//{
 			//    // No pieces on the board, cannot make a move
 			//    throw new InvalidOperationException("bad board, king missing.");
 			//}
-			UndoInfo undo = new()
+			
+            UndoInfo undo = new()
 			{
 				PreviousCastlingRights = board.castlingRights,
 				PreviousEnPassantSquare = board.enPassantSquare,
@@ -320,7 +327,7 @@ namespace Osmium
 
 		public void MakeRealMove(Move move)
 		{
-			history.Push(SaveState());
+            history.Push(SaveState());
 			ApplyMoveInternal(move);
 		}
 
@@ -420,6 +427,7 @@ namespace Osmium
 
 			// 4) Recompute occupancies
 			UpdateOccupancies();
+			
 		}
 
 		// Actual logic to mutate bitboards, occupancies, castling, en passant, etc.
@@ -545,20 +553,26 @@ namespace Osmium
 			}
 
 			// Set en passant square for double pawn push
-			if ((move.Flags & MoveFlags.EnPassant) != 0)
+			if (move.PieceMoved == (sideToMove==Color.White ? Piece.WhitePawn : Piece.BlackPawn))
 			{
-				enPassantSquare = (Square)((sideToMove == Color.White) ? toIdx - 8 : toIdx + 8);
-				zobristKey ^= Zobrist.EnPassantFile[toFile];
+				if (move.To - move.From == 16 || move.From - move.To == 16)
+				{
+					enPassantSquare = (Square)((sideToMove == Color.White) ? toIdx - 8 : toIdx + 8);
+					zobristKey ^= Zobrist.EnPassantFile[toFile];
+				}
 			}
 
 			// Update occupancies at end
 			UpdateOccupancies();
 
 			// Update side to move
+			//Console.Write("app mv int: before " + sideToMove);
 			sideToMove ^= (Color)1;
+			//Console.WriteLine(" after " + sideToMove);
 
-			// Update halfmove clock
-			if (move.PieceMoved == Piece.WhitePawn || move.PieceMoved == Piece.BlackPawn || move.PieceCaptured != Piece.None)
+
+            // Update halfmove clock
+            if (move.PieceMoved == Piece.WhitePawn || move.PieceMoved == Piece.BlackPawn || move.PieceCaptured != Piece.None)
 				halfmoveClock = 0;
 			else
 				halfmoveClock++;
@@ -597,6 +611,21 @@ namespace Osmium
 			occupancies[(int)Color.Black] = black;
 			occupancies[2] = white | black;
 		}
+		internal Board Clone()
+		{
+			Board b = new();
+			Array.Copy(bitboards, b.bitboards, bitboards.Length);
+			Array.Copy(occupancies, b.occupancies, occupancies.Length);
+			b.materialDelta = materialDelta;
+			b.sideToMove = sideToMove;
+			b.castlingRights = castlingRights;
+			b.enPassantSquare = enPassantSquare;
+			b.halfmoveClock = halfmoveClock;
+			b.fullmoveNumber = fullmoveNumber;
+			b.zobristKey = zobristKey;
+			//history is not copied
+			return b;
+        }
 
-	}
+    }
 }

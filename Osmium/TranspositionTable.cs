@@ -70,7 +70,7 @@ namespace Osmium
             bucketMask = (ulong)(clusterCount - 1);
             generation = 0;
 
-            Console.WriteLine($"TT: {totalEntries:N0} entries, {clusterCount:N0} clusters, 4 slots each");
+            //Console.WriteLine($"TT: {totalEntries:N0} entries, {clusterCount:N0} clusters, 4 slots each");
         }
 
         public bool Probe(ulong key, int depth, int alpha, int beta, out int score, out ushort bestMove)

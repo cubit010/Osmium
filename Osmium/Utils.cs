@@ -71,6 +71,11 @@ namespace Osmium
             Console.WriteLine("  a b c d e f g h");
         }
 
+        internal static string SquareToPieceString(Board board, Square sq)
+        {
+            Piece piece = FindPieceAt(board, sq);
+            return piece == Piece.None ? "." : PieceToChar(piece).ToString();
+        }
         private static Piece FindPieceAt(Board board, Square sq)
         {
             ulong mask = 1UL << (int)sq;

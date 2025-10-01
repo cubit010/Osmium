@@ -202,6 +202,8 @@ namespace Osmium
                     // King move: must not move into check
                     if (!IsSquareChecked(board, to, isWhite, kingSq))
                         moves[legalCount++] = move;
+                    //else 
+                        //Console.WriteLine($"Illegal king move into check: {move.From} to {move.To}");
                 }
                 else if (checkCount == 0)
                 {
@@ -414,58 +416,22 @@ namespace Osmium
 
             //pretend king is moved, so that the old king can't block a potential check
             ulong occ = (board.occupancies[2] & ~(1UL << Ksq));
+            int isWhiteAtk = (isWhiteDefend ? (int)Color.Black : (int)Color.White);
+            int enemy = (6 * isWhiteAtk);
 
-            // Pawn attacks
-            if (isWhiteDefend)
-            {
-                // Black pawn attacks white king (from southeast or southwest)
-                if (square % 8 < 7 && square + 7 < 64 &&
-                    (board.bitboards[(int)Piece.BlackPawn] & (1UL << (square + 7))) != 0)
-                    return true;
-                if (square % 8 > 0 && square + 9 < 64 &&
-                    (board.bitboards[(int)Piece.BlackPawn] & (1UL << (square + 9))) != 0)
-                    return true;
-            }
-            else
-            {
-                // White pawn attacks black king (from northwest or northeast)
-                if (square % 8 > 0 && square - 7 >= 0 &&
-                    (board.bitboards[(int)Piece.WhitePawn] & (1UL << (square - 7))) != 0)
-                    return true;
-                if (square % 8 < 7 && square - 9 >= 0 &&
-                    (board.bitboards[(int)Piece.WhitePawn] & (1UL << (square - 9))) != 0)
-                    return true;
-            }
+            ulong pawn = board.bitboards[0 + enemy];
+            ulong knight = board.bitboards[1 + enemy];
+            ulong bishop = board.bitboards[2 + enemy];
+            ulong rook = board.bitboards[3 + enemy];
+            ulong queen = board.bitboards[4 + enemy];
+            ulong king = board.bitboards[5 + enemy];
 
-            // Knight attacks
-            ulong knights = isWhiteDefend
-                ? board.bitboards[(int)Piece.BlackKnight]
-                : board.bitboards[(int)Piece.WhiteKnight];
-            if ((knights & MoveTables.KnightMoves[square]) != 0)
-                return true;
 
-            // King attacks (relevant for some edge cases outside check detection)
-            ulong kings = isWhiteDefend
-                ? board.bitboards[(int)Piece.BlackKing]
-                : board.bitboards[(int)Piece.WhiteKing];
-            if ((kings & MoveTables.KingMoves[square]) != 0)
-                return true;
-
-            // Rook/Queen attacks
-            ulong rq = isWhiteDefend
-                ? board.bitboards[(int)Piece.BlackRook] | board.bitboards[(int)Piece.BlackQueen]
-                : board.bitboards[(int)Piece.WhiteRook] | board.bitboards[(int)Piece.WhiteQueen];
-            if ((Magics.GetRookAttacks(square, occ) & rq) != 0)
-                return true;
-
-            // Bishop/Queen attacks
-            ulong bq = isWhiteDefend
-                ? board.bitboards[(int)Piece.BlackBishop] | board.bitboards[(int)Piece.BlackQueen]
-                : board.bitboards[(int)Piece.WhiteBishop] | board.bitboards[(int)Piece.WhiteQueen];
-            if ((Magics.GetBishopAttacks(square, occ) & bq) != 0)
-                return true;
-
-            return false;
+            return ((MoveTables.CombinedPCaps[isWhiteAtk, square] & pawn) != 0) ||
+                    ((MoveTables.KnightMoves[square] & knight) != 0) ||
+                    ((MoveTables.KingMoves[square] & king) != 0) ||
+                    ((Magics.GetRookAttacks(square, occ) & (rook | queen)) != 0) ||
+                    ((Magics.GetBishopAttacks(square, occ) & (bishop | queen)) != 0);
         }
     }
 }

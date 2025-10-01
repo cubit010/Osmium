@@ -9,14 +9,12 @@ namespace Osmium
     /// </summary>
     public static class Fen
     {
-        internal static void LoadStartPos(Board board)
+        public static void LoadStartPos(Board board)
         {
             LoadFEN(board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
         }
-        /// <summary>
         /// Loads a FEN string into the given board, resetting all state.
-        /// </summary>
-        internal static void LoadFEN(Board board, string fen)
+        public static void LoadFEN(Board board, string fen)
         {
             var parts = fen.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 4)

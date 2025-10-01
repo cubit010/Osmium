@@ -26,6 +26,7 @@
             {
                 KnightMoves[sq] = ComputeKnightAttacks(sq);
                 KingMoves[sq] = ComputeKingAttacks(sq);
+                //Utils.PrintBitboard(KingMoves[sq]);
 
                 PawnMoves[0, sq] = ComputeWPawnSingle(sq); // White pawn single move
                 PawnMoves[1, sq] = ComputeBPawnSingle(sq); // Black pawn single move

@@ -243,7 +243,6 @@ namespace Osmium
 		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 		internal static void GenerateWhitePawn(ulong pawns, ulong blackEnemy, ulong whiteFriendly, Span<Move> moves, ref int count, Board board)
 		{
-
 			while (pawns != 0)
 			{
 				int sq = BitOperations.TrailingZeroCount(pawns);
@@ -307,7 +306,7 @@ namespace Osmium
 				}
 				else
 				{
-					moves[count++] = new((Square)sq, (Square)(to), Piece.WhitePawn, tookPiece);
+					moves[count++] = new((Square)sq, (Square)(to), Piece.WhitePawn, tookPiece, MoveFlags.Capture);
 				}
 
 			} else if (checkEP && board.enPassantSquare == (Square)(sq + 7))
@@ -330,7 +329,7 @@ namespace Osmium
 				}
 				else
 				{
-					moves[count++] = new((Square)sq, (Square)(to), Piece.WhitePawn, tookPiece);
+					moves[count++] = new((Square)sq, (Square)(to), Piece.WhitePawn, tookPiece, MoveFlags.Capture);
 				}
 			} else if (checkEP && board.enPassantSquare == (Square)(sq + 9))
 			{
@@ -385,7 +384,7 @@ namespace Osmium
 				}
 				else
 				{
-					moves[count++] = new((Square)sq, (Square)(sq - 7), Piece.BlackPawn, tookPiece);
+					moves[count++] = new((Square)sq, (Square)(sq - 7), Piece.BlackPawn, tookPiece, MoveFlags.Capture);
 				}
 
 			}
@@ -408,7 +407,7 @@ namespace Osmium
 				}
 				else
 				{
-					moves[count++] = new((Square)sq, (Square)(sq - 9), Piece.BlackPawn, tookPiece);
+					moves[count++] = new((Square)sq, (Square)(sq - 9), Piece.BlackPawn, tookPiece, MoveFlags.Capture);
 				}
 			}
 			else if (checkEP && board.enPassantSquare == (Square)(sq - 9))
