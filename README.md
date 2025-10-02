@@ -52,8 +52,8 @@
 ## Usage
 
 ### The Engine is a command-line engine, which only supports uci commands
-### Not all of the commands are supported, below is a list that is supported
-- uci - uci info about author (me) and engine specifications 
+### Not all of the commands are supported (yet), below is a list that is supported
+- uci - uci info about author (me) and engine specifications, as well as any tuning options, however, values does not need to be adjusted to use the engine
 - isready - sets up the engine
 - ucinewgame - prepares the engine for a new game, with a fresh board
 - quit - exits engine
