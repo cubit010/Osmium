@@ -51,7 +51,9 @@
 
 ## Usage
 
-### The Engine is a command-line engine, which only supports uci commands
+### The Engine is a console app, inputs taken through text, and out through console output, which only supports limited uci commands
+- to run, download the .exe, and run it, a console window should pop up, and you can start typing commands into the chess engine
+- or, download a GUI if you wish, and connect it to that and play against it, or have it play against other chess engines
 ### Not all of the commands are supported (yet), below is a list that is supported
 - uci - uci info about author (me) and engine specifications, as well as any tuning options, however, values does not need to be adjusted to use the engine
 - isready - sets up the engine
